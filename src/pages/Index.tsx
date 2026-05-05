@@ -15,6 +15,15 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -229,6 +238,9 @@ const Dashboard = ({
   onOpen: (id: number) => void;
   onCreate: (name: string) => void;
 }) => {
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
   const totals = useMemo(() => {
     const tasks = projects.reduce((s, p) => s + p.tasks, 0);
     const done = projects.reduce((s, p) => s + p.completed, 0);
@@ -251,16 +263,73 @@ const Dashboard = ({
             <UserPlus className="mr-2 h-4 w-4" /> Invite members
           </Button>
           <Button
-            onClick={() => {
-              const name = prompt("Project name", "New Project");
-              if (name) onCreate(name);
-            }}
+            onClick={() => setOpen(true)}
             className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
           >
             <Plus className="mr-2 h-4 w-4" /> New project
           </Button>
         </div>
       </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-md">
+          <div className="bg-gradient-hero rounded-t-2xl px-7 pb-5 pt-7">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-accent shadow-glow">
+                <Plus className="h-5 w-5 text-accent-foreground" />
+              </div>
+              <DialogHeader className="space-y-1 text-left">
+                <DialogTitle className="font-display text-2xl font-bold tracking-tight">
+                  Create new project
+                </DialogTitle>
+                <DialogDescription className="text-sm">
+                  Set up a workspace for your annotation tasks.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+          </div>
+          <div className="space-y-5 px-7 py-6">
+            <div className="space-y-2">
+              <Label htmlFor="proj-name">Project name</Label>
+              <Input
+                id="proj-name"
+                placeholder="e.g. Customer Support Audio"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="h-11 rounded-xl"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="proj-desc">Description <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Textarea
+                id="proj-desc"
+                placeholder="What's this project about?"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                className="min-h-24 rounded-xl"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 rounded-b-2xl border-t border-border/60 bg-muted/30 px-7 py-4">
+            <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full">
+              Cancel
+            </Button>
+            <Button
+              disabled={!newName.trim()}
+              onClick={() => {
+                onCreate(newName.trim());
+                setNewName("");
+                setNewDesc("");
+                setOpen(false);
+              }}
+              className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+            >
+              <Plus className="mr-1 h-4 w-4" /> Create project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         <Stat label="Active projects" value={totals.projects} hint="Across your team" />
