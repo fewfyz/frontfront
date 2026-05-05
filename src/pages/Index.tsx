@@ -1,16 +1,490 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { toast } from "sonner";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  FileText,
+  LogOut,
+  Plus,
+  Sparkles,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
-// IMPORTANT: Fully REPLACE this with your own code
-const PlaceholderIndex = () => {
-  // PLACEHOLDER: Replace this entire return statement with the user's app.
-  // The inline background color is intentionally not part of the design system.
+type Project = { id: number; name: string; tasks: number; completed: number };
+type Page =
+  | { name: "login" }
+  | { name: "dashboard" }
+  | { name: "project"; id: number }
+  | { name: "label"; id: number };
+
+const initialProjects: Project[] = [
+  { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254 },
+  { id: 2, name: "Speech QA – Batch 03", tasks: 1800, completed: 0 },
+  { id: 3, name: "Voice Intent Tagging", tasks: 420, completed: 120 },
+];
+
+const Index = () => {
+  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [page, setPage] = useState<Page>({ name: "login" });
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+
+  const go = (p: Page) => {
+    if (p.name !== "login" && !user) return setPage({ name: "login" });
+    setPage(p);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setPage({ name: "login" });
+    toast.success("Signed out successfully");
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
+    <div className="min-h-screen bg-background">
+      {user && page.name !== "login" && (
+        <TopBar user={user} onLogout={handleLogout} onHome={() => go({ name: "dashboard" })} />
+      )}
+      {page.name === "login" && (
+        <Login
+          onLogin={(email) => {
+            setUser({ email });
+            setPage({ name: "dashboard" });
+            toast.success(`Welcome, ${email.split("@")[0]}`);
+          }}
+        />
+      )}
+      {page.name === "dashboard" && (
+        <Dashboard
+          projects={projects}
+          onOpen={(id) => go({ name: "project", id })}
+          onCreate={(name) => {
+            const np = { id: Date.now(), name, tasks: 0, completed: 0 };
+            setProjects([np, ...projects]);
+            toast.success("Project created");
+          }}
+        />
+      )}
+      {page.name === "project" && (
+        <ProjectView
+          project={projects.find((p) => p.id === page.id)!}
+          onBack={() => go({ name: "dashboard" })}
+          onLabel={(taskId) => go({ name: "label", id: taskId })}
+        />
+      )}
+      {page.name === "label" && (
+        <Labeling taskId={page.id} onBack={() => go({ name: "dashboard" })} />
+      )}
     </div>
   );
 };
 
-const Index = PlaceholderIndex;
+/* ---------------- TopBar ---------------- */
+const TopBar = ({
+  user,
+  onLogout,
+  onHome,
+}: {
+  user: { email: string };
+  onLogout: () => void;
+  onHome: () => void;
+}) => {
+  const initials = user.email.slice(0, 2).toUpperCase();
+  return (
+    <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+        <button onClick={onHome} className="flex items-center gap-2">
+          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-accent shadow-glow">
+            <Sparkles className="h-4 w-4 text-accent-foreground" />
+          </div>
+          <span className="font-display text-lg font-bold">Annota</span>
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-3 rounded-full border border-border bg-card px-2 py-1.5 pr-4 transition hover:shadow-soft">
+              <Avatar className="h-7 w-7">
+                <AvatarFallback className="bg-gradient-accent text-xs text-accent-foreground">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium">{user.email}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>My account</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onLogout} className="cursor-pointer text-destructive focus:text-destructive">
+              <LogOut className="mr-2 h-4 w-4" /> Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  );
+};
+
+/* ---------------- Login ---------------- */
+const Login = ({ onLogin }: { onLogin: (email: string) => void }) => {
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onLogin(email.trim() || "tester@example.com");
+  };
+  return (
+    <main className="grid min-h-screen lg:grid-cols-2">
+      <section className="relative hidden flex-col justify-between overflow-hidden bg-gradient-hero p-12 lg:flex">
+        <div className="flex items-center gap-2">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-accent shadow-glow">
+            <Sparkles className="h-5 w-5 text-accent-foreground" />
+          </div>
+          <span className="font-display text-xl font-bold">Annota</span>
+        </div>
+        <div className="relative z-10 max-w-md">
+          <Badge className="mb-6 border-0 bg-accent-soft text-accent hover:bg-accent-soft">
+            Annotation Platform
+          </Badge>
+          <h1 className="font-display text-5xl font-extrabold leading-tight tracking-tight">
+            Label faster.<br />
+            Ship smarter.
+          </h1>
+          <p className="mt-4 max-w-sm text-base text-muted-foreground">
+            A modern workspace for high-quality data annotation, built for teams who care about clean datasets.
+          </p>
+        </div>
+        <div className="absolute -right-32 -bottom-32 h-96 w-96 rounded-full bg-accent/20 blur-3xl" />
+        <div className="absolute -left-16 top-32 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
+        <p className="relative z-10 text-xs text-muted-foreground">© 2026 Annota Labs</p>
+      </section>
+
+      <section className="flex items-center justify-center p-6 sm:p-12">
+        <Card className="w-full max-w-md border-border/60 p-8 shadow-soft sm:p-10">
+          <h2 className="font-display text-3xl font-bold">Welcome back</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Sign in to continue. Any email and password will work.
+          </p>
+          <form onSubmit={submit} className="mt-8 space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email address</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pass">Password</Label>
+              <Input
+                id="pass"
+                type="password"
+                placeholder="••••••••"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                className="h-11"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="remember" />
+              <label htmlFor="remember" className="text-sm text-muted-foreground">
+                Keep me signed in on this browser
+              </label>
+            </div>
+            <Button type="submit" className="h-11 w-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
+              Sign in <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </form>
+        </Card>
+      </section>
+    </main>
+  );
+};
+
+/* ---------------- Dashboard ---------------- */
+const Dashboard = ({
+  projects,
+  onOpen,
+  onCreate,
+}: {
+  projects: Project[];
+  onOpen: (id: number) => void;
+  onCreate: (name: string) => void;
+}) => {
+  const totals = useMemo(() => {
+    const tasks = projects.reduce((s, p) => s + p.tasks, 0);
+    const done = projects.reduce((s, p) => s + p.completed, 0);
+    return { tasks, done, projects: projects.length };
+  }, [projects]);
+  return (
+    <main className="mx-auto max-w-7xl px-6 py-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-accent">Dashboard</p>
+          <h1 className="mt-1 font-display text-4xl font-extrabold tracking-tight">Welcome back 👋</h1>
+          <p className="mt-2 text-muted-foreground">Here's what's happening in your workspace today.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => toast.info("Invite flow coming soon")}
+            className="rounded-full"
+          >
+            <UserPlus className="mr-2 h-4 w-4" /> Invite members
+          </Button>
+          <Button
+            onClick={() => {
+              const name = prompt("Project name", "New Project");
+              if (name) onCreate(name);
+            }}
+            className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+          >
+            <Plus className="mr-2 h-4 w-4" /> New project
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+        <Stat label="Active projects" value={totals.projects} hint="Across your team" />
+        <Stat label="Total tasks" value={totals.tasks.toLocaleString()} hint="Queued for review" />
+        <Stat label="Completed" value={totals.done.toLocaleString()} hint="Annotated this cycle" />
+      </div>
+
+      <div className="mt-10 grid gap-6 lg:grid-cols-3">
+        <Card className="border-border/60 p-6 shadow-soft lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-xl font-bold">Recent projects</h3>
+            <span className="text-sm text-muted-foreground">{projects.length} total</span>
+          </div>
+          <div className="mt-5 space-y-3">
+            {projects.map((p) => {
+              const pct = p.tasks ? Math.round((p.completed / p.tasks) * 100) : 0;
+              return (
+                <div
+                  key={p.id}
+                  className="group flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card p-4 transition hover:border-accent/40 hover:shadow-soft"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.completed} of {p.tasks} tasks · {pct}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="hidden w-40 sm:block">
+                    <Progress value={pct} className="h-2" />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onOpen(p.id)}
+                    className="rounded-full text-accent hover:bg-accent-soft hover:text-accent"
+                  >
+                    Open <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card className="border-border/60 p-6 shadow-soft">
+          <h3 className="font-display text-xl font-bold">Resources</h3>
+          <ul className="mt-4 space-y-2 text-sm">
+            {[
+              { icon: BookOpen, label: "Documentation" },
+              { icon: FileText, label: "API Reference" },
+              { icon: Users, label: "Team guidelines" },
+            ].map((r) => (
+              <li key={r.label}>
+                <a className="flex items-center gap-3 rounded-lg p-3 text-foreground transition hover:bg-muted">
+                  <r.icon className="h-4 w-4 text-accent" />
+                  <span>{r.label}</span>
+                  <ArrowRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    </main>
+  );
+};
+
+const Stat = ({ label, value, hint }: { label: string; value: string | number; hint: string }) => (
+  <Card className="border-border/60 p-5 shadow-soft">
+    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+    <p className="mt-2 font-display text-3xl font-bold">{value}</p>
+    <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+  </Card>
+);
+
+/* ---------------- Project View ---------------- */
+const ProjectView = ({
+  project,
+  onBack,
+  onLabel,
+}: {
+  project: Project;
+  onBack: () => void;
+  onLabel: (id: number) => void;
+}) => {
+  const rows = Array.from({ length: 12 }, (_, i) => ({
+    id: 15904 + i,
+    completed: i % 2 === 0,
+    user: `User ${(i % 3) + 1}`,
+    text: `ตัวอย่างข้อความ ${i + 1}`,
+  }));
+  return (
+    <main className="mx-auto max-w-7xl px-6 py-10">
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
+        <ArrowLeft className="h-4 w-4" /> Back to projects
+      </button>
+      <div className="mt-3 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-extrabold">{project.name}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {project.completed} of {project.tasks} tasks completed
+          </p>
+        </div>
+      </div>
+      <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-6 py-3 text-left">ID</th>
+                <th className="px-6 py-3 text-left">Status</th>
+                <th className="px-6 py-3 text-left">Annotated by</th>
+                <th className="px-6 py-3 text-left">Text</th>
+                <th className="px-6 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-border/60 transition hover:bg-muted/40">
+                  <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{r.id}</td>
+                  <td className="px-6 py-4">
+                    <Badge
+                      variant="outline"
+                      className={
+                        r.completed
+                          ? "border-accent/30 bg-accent-soft text-accent"
+                          : "border-border text-muted-foreground"
+                      }
+                    >
+                      {r.completed ? "Done" : "Pending"}
+                    </Badge>
+                  </td>
+                  <td className="px-6 py-4 text-muted-foreground">{r.user}</td>
+                  <td className="px-6 py-4">{r.text}</td>
+                  <td className="px-6 py-4 text-right">
+                    <Button size="sm" variant="ghost" onClick={() => onLabel(r.id)} className="text-accent hover:bg-accent-soft hover:text-accent">
+                      Label <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </main>
+  );
+};
+
+/* ---------------- Labeling ---------------- */
+const Labeling = ({ taskId, onBack }: { taskId: number; onBack: () => void }) => {
+  return (
+    <main className="mx-auto max-w-7xl px-6 py-10">
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <p className="text-sm text-muted-foreground">
+          Projects / Labeling · <span className="font-mono text-foreground">#{taskId}</span>
+        </p>
+      </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr_300px]">
+        <Card className="border-border/60 p-5 shadow-soft">
+          <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Tasks</h4>
+          <div className="mt-4 space-y-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className={`flex items-center gap-3 rounded-lg border p-3 text-sm ${
+                  i === 1 ? "border-accent/40 bg-accent-soft" : "border-border/60 bg-card"
+                }`}
+              >
+                <span className="font-mono text-xs text-muted-foreground">#{i}</span>
+                <span className="truncate">ตัวอย่างข้อความ {i}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card className="border-border/60 p-6 shadow-soft">
+          <div className="relative h-24 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/70">
+            <svg viewBox="0 0 400 80" preserveAspectRatio="none" className="absolute inset-0 h-full w-full opacity-80">
+              {Array.from({ length: 60 }).map((_, i) => {
+                const h = 10 + Math.abs(Math.sin(i * 0.6)) * 60;
+                return <rect key={i} x={i * 7} y={(80 - h) / 2} width={3} height={h} fill="hsl(var(--accent))" rx={1.5} />;
+              })}
+            </svg>
+          </div>
+          <h3 className="mt-6 font-display text-lg font-bold">Transcription</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Please correct the transcript if needed.</p>
+          <textarea
+            defaultValue="ตัวอย่างข้อความที่ถอดเสียงได้ โปรดตรวจสอบและแก้ไข"
+            className="mt-3 min-h-24 w-full resize-none rounded-xl border border-border bg-background p-4 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          />
+          <div className="mt-6">
+            <h4 className="text-sm font-semibold">Tag any that apply</h4>
+            <div className="mt-3 space-y-2">
+              {["Multiple speakers", "Inaudible", "Background noise"].map((t) => (
+                <label key={t} className="flex items-center gap-3 rounded-lg border border-border/60 bg-card p-3 text-sm hover:border-accent/40">
+                  <Checkbox /> <span>{t}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" className="rounded-full">Skip</Button>
+            <Button onClick={() => toast.success("Submitted")} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
+              Submit <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </Card>
+        <Card className="border-border/60 p-5 shadow-soft">
+          <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Region details</h4>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Select a region on the waveform to view its properties, metadata and available actions.
+          </p>
+        </Card>
+      </div>
+    </main>
+  );
+};
 
 export default Index;
