@@ -191,11 +191,11 @@ const Login = ({ onLogin }: { onLogin: (email: string) => void }) => {
           </p>
           <form onSubmit={submit} className="mt-8 space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
+              <Label htmlFor="email">Username or email</Label>
               <Input
                 id="email"
-                type="email"
-                placeholder="you@company.com"
+                type="text"
+                placeholder="your username or email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11"
