@@ -319,6 +319,7 @@ const Index = () => {
           tasks={tasks}
           onBack={() => go({ name: "dashboard" })}
           onSubmit={handleSubmitTask}
+          onGoTo={(id) => go({ name: "label", id })}
         />
       )}
       {page.name === "annotatedBy" && (
@@ -834,6 +835,7 @@ const Labeling = ({
   tasks,
   onBack,
   onSubmit,
+  onGoTo,
 }: {
   taskId: number;
   tasks: Task[];
@@ -843,16 +845,19 @@ const Labeling = ({
     transcript: string,
     tags: string[]
   ) => Promise<void> | void;
+  onGoTo: (id: number) => void;
 }) => {
   const current = tasks.find((t) => t.id === taskId);
-  const sidebar = tasks.slice(0, 6);
+  const currentIndex = tasks.findIndex((t) => t.id === taskId);
+  const sidebarStart = Math.max(0, currentIndex - 2);
+  const sidebar = tasks.slice(sidebarStart, sidebarStart + 6);
   const TAG_OPTIONS = ["Multiple speakers", "Inaudible", "Background noise"];
-  const [transcript, setTranscript] = useState(current?.text ?? "");
+  const [transcript, setTranscript] = useState(current?.transcript ?? current?.text ?? "");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setTranscript(current?.text ?? "");
+    setTranscript(current?.transcript ?? current?.text ?? "");
     setSelectedTags([]);
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -975,13 +980,17 @@ const Labeling = ({
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end gap-2">
+          <div className="mt-6 flex justify-between gap-2">
             <Button
               variant="outline"
               className="rounded-full"
-              onClick={onBack}
+              disabled={busy || currentIndex === 0}
+              onClick={() => {
+                const prev = tasks[currentIndex - 1];
+                if (prev) onGoTo(prev.id);
+              }}
             >
-              Skip
+              <ArrowLeft className="mr-1 h-4 w-4" /> Previous
             </Button>
             <Button
               onClick={handleSubmit}
