@@ -68,6 +68,34 @@ const buildInitialTasks = (): Task[] =>
     text: `ตัวอย่างข้อความ ${i + 1}`,
   }));
 
+/* ── Dev-user helpers (localStorage) ── */
+const isDevUser = (user: User | null) =>
+  user?.id?.startsWith("dev:") ?? false;
+
+const DEV_STORAGE_KEY = "annota_dev_progress";
+
+const loadDevProgress = (): Record<
+  number,
+  { transcript: string; tags: string[]; completed: boolean }
+> => {
+  try {
+    return JSON.parse(localStorage.getItem(DEV_STORAGE_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+};
+
+const saveDevProgress = (
+  taskId: number,
+  transcript: string,
+  tags: string[],
+  completed: boolean
+) => {
+  const existing = loadDevProgress();
+  existing[taskId] = { transcript, tags, completed };
+  localStorage.setItem(DEV_STORAGE_KEY, JSON.stringify(existing));
+};
+
 const Index = () => {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -76,7 +104,7 @@ const Index = () => {
   const [tasks, setTasks] = useState<Task[]>(buildInitialTasks());
   const [tasksLoaded, setTasksLoaded] = useState(false);
 
-  // Auth bootstrap — listener first, then session.
+  // Auth bootstrap
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthUser(session?.user ?? null);
@@ -89,13 +117,39 @@ const Index = () => {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Load this user's saved progress and merge into the local task list.
+  // Load progress
   useEffect(() => {
     if (!authUser) {
       setTasks(buildInitialTasks());
       setTasksLoaded(false);
       return;
     }
+
+    // ── Dev user: load from localStorage ──
+    if (isDevUser(authUser)) {
+      const saved = loadDevProgress();
+      const base = buildInitialTasks();
+      const merged = base.map((t) => {
+        const r = saved[t.id];
+        return r
+          ? {
+              ...t,
+              completed: r.completed,
+              user: authUser.email ?? "",
+              transcript: r.transcript,
+              tags: r.tags,
+            }
+          : t;
+      });
+      setTasks(merged);
+      setTasksLoaded(true);
+      if (merged.every((t) => t.completed)) {
+        setPage({ name: "annotatedBy", projectId: 0 });
+      }
+      return;
+    }
+
+    // ── Real user: load from Supabase ──
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
@@ -124,7 +178,6 @@ const Index = () => {
       });
       setTasks(merged);
       setTasksLoaded(true);
-      // If everything done, jump to AnnotatedBy.
       if (merged.every((t) => t.completed)) {
         setPage({ name: "annotatedBy", projectId: 0 });
       }
@@ -138,7 +191,11 @@ const Index = () => {
     () =>
       projects.map((p) =>
         p.id === 1
-          ? { ...p, tasks: tasks.length, completed: tasks.filter((t) => t.completed).length }
+          ? {
+              ...p,
+              tasks: tasks.length,
+              completed: tasks.filter((t) => t.completed).length,
+            }
           : p
       ),
     [projects, tasks]
@@ -158,6 +215,28 @@ const Index = () => {
     tags: string[]
   ) => {
     if (!authUser) return;
+
+    // ── Dev user: save to localStorage ──
+    if (isDevUser(authUser)) {
+      saveDevProgress(submittedId, transcript, tags, true);
+      const updated = tasks.map((t) =>
+        t.id === submittedId
+          ? { ...t, completed: true, user: authUser.email ?? "", transcript, tags }
+          : t
+      );
+      setTasks(updated);
+      const next = updated.find((t) => !t.completed);
+      if (next) {
+        toast.success("Submitted");
+        setPage({ name: "label", id: next.id });
+      } else {
+        toast.success("All tasks completed! 🎉");
+        setPage({ name: "annotatedBy", projectId: 0 });
+      }
+      return;
+    }
+
+    // ── Real user: save to Supabase ──
     const { error } = await supabase.from("task_progress").upsert(
       {
         user_id: authUser.id,
@@ -182,19 +261,30 @@ const Index = () => {
     const next = updated.find((t) => !t.completed);
     if (next) {
       toast.success("Submitted");
-      go({ name: "label", id: next.id });
+      setPage({ name: "label", id: next.id });
     } else {
       toast.success("All tasks completed");
-      go({ name: "annotatedBy", projectId: 0 });
+      setPage({ name: "annotatedBy", projectId: 0 });
     }
   };
 
   if (!authReady) {
-    return <div className="grid min-h-screen place-items-center bg-background text-muted-foreground">Loading…</div>;
+    return (
+      <div className="grid min-h-screen place-items-center bg-background text-muted-foreground">
+        Loading…
+      </div>
+    );
   }
 
   if (!authUser) {
-    return <Login onLocalLogin={(u: User) => { setAuthUser(u); setAuthReady(true); }} />;
+    return (
+      <Login
+        onLocalLogin={(u: User) => {
+          setAuthUser(u);
+          setAuthReady(true);
+        }}
+      />
+    );
   }
 
   return (
@@ -232,7 +322,10 @@ const Index = () => {
         />
       )}
       {page.name === "annotatedBy" && (
-        <AnnotatedBy tasks={tasks} onBack={() => go({ name: "dashboard" })} />
+        <AnnotatedBy
+          tasks={tasks}
+          onBack={() => go({ name: "dashboard" })}
+        />
       )}
     </div>
   );
@@ -272,7 +365,10 @@ const TopBar = ({
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onLogout} className="cursor-pointer text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              onClick={onLogout}
+              className="cursor-pointer text-destructive focus:text-destructive"
+            >
               <LogOut className="mr-2 h-4 w-4" /> Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -297,15 +393,16 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
     }
     setBusy(true);
     try {
-      // Accept either full email or a simple username for testing.
-      // If the input doesn't contain '@', append a test domain so Supabase can accept it.
-      const credentialEmail = email.includes("@") ? email.trim() : `${email.trim()}@example.com`;
+      const credentialEmail = email.includes("@")
+        ? email.trim()
+        : `${email.trim()}@example.com`;
 
-      // If this is a test username (we appended @example.com) allow a local/dev login
       const isDevLogin = credentialEmail.endsWith("@example.com");
       if (isDevLogin) {
-        // Bypass Supabase for quick local testing — create a lightweight User object
-        const devUser = { id: `dev:${credentialEmail}`, email: credentialEmail } as unknown as User;
+        const devUser = {
+          id: `dev:${credentialEmail}`,
+          email: credentialEmail,
+        } as unknown as User;
         onLocalLogin?.(devUser);
         toast.success(`Signed in (dev): ${email}`);
       } else {
@@ -352,12 +449,15 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
             Ship smarter.
           </h1>
           <p className="mt-4 max-w-sm text-base text-muted-foreground">
-            A modern workspace for high-quality data annotation, built for teams who care about clean datasets.
+            A modern workspace for high-quality data annotation, built for
+            teams who care about clean datasets.
           </p>
         </div>
         <div className="absolute -right-32 -bottom-32 h-96 w-96 rounded-full bg-accent/20 blur-3xl" />
         <div className="absolute -left-16 top-32 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
-        <p className="relative z-10 text-xs text-muted-foreground">© 2026 Annota Labs</p>
+        <p className="relative z-10 text-xs text-muted-foreground">
+          © 2026 Annota Labs
+        </p>
       </section>
 
       <section className="flex items-center justify-center p-6 sm:p-12">
@@ -392,7 +492,9 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
                 className="h-11"
-                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                autoComplete={
+                  mode === "signin" ? "current-password" : "new-password"
+                }
               />
             </div>
             <Button
@@ -400,15 +502,23 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
               disabled={busy}
               className="h-11 w-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
             >
-              {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Sign up"}
+              {busy
+                ? "Please wait…"
+                : mode === "signin"
+                ? "Sign in"
+                : "Sign up"}
               <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </form>
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            {mode === "signin" ? "Don't have an account?" : "Already have an account?"} {" "}
+            {mode === "signin"
+              ? "Don't have an account?"
+              : "Already have an account?"}{" "}
             <button
               type="button"
-              onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+              onClick={() =>
+                setMode(mode === "signin" ? "signup" : "signin")
+              }
               className="font-medium text-accent hover:underline"
             >
               {mode === "signin" ? "Sign up" : "Sign in"}
@@ -438,13 +548,18 @@ const Dashboard = ({
     const done = projects.reduce((s, p) => s + p.completed, 0);
     return { tasks, done, projects: projects.length };
   }, [projects]);
+
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-accent">Dashboard</p>
-          <h1 className="mt-1 font-display text-4xl font-extrabold tracking-tight">Welcome back 👋</h1>
-          <p className="mt-2 text-muted-foreground">Here's what's happening in your workspace today.</p>
+          <h1 className="mt-1 font-display text-4xl font-extrabold tracking-tight">
+            Welcome back 👋
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Here's what's happening in your workspace today.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -493,7 +608,12 @@ const Dashboard = ({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="proj-desc">Description <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Label htmlFor="proj-desc">
+                Description{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
+              </Label>
               <Textarea
                 id="proj-desc"
                 placeholder="What's this project about?"
@@ -504,7 +624,11 @@ const Dashboard = ({
             </div>
           </div>
           <DialogFooter className="gap-2 rounded-b-2xl border-t border-border/60 bg-muted/30 px-7 py-4">
-            <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full">
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              className="rounded-full"
+            >
               Cancel
             </Button>
             <Button
@@ -533,11 +657,15 @@ const Dashboard = ({
         <Card className="border-border/60 p-6 shadow-soft lg:col-span-2">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-xl font-bold">Recent projects</h3>
-            <span className="text-sm text-muted-foreground">{projects.length} total</span>
+            <span className="text-sm text-muted-foreground">
+              {projects.length} total
+            </span>
           </div>
           <div className="mt-5 space-y-3">
             {projects.map((p) => {
-              const pct = p.tasks ? Math.round((p.completed / p.tasks) * 100) : 0;
+              const pct = p.tasks
+                ? Math.round((p.completed / p.tasks) * 100)
+                : 0;
               return (
                 <div
                   key={p.id}
@@ -594,9 +722,19 @@ const Dashboard = ({
   );
 };
 
-const Stat = ({ label, value, hint }: { label: string; value: string | number; hint: string }) => (
+const Stat = ({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string | number;
+  hint: string;
+}) => (
   <Card className="border-border/60 p-5 shadow-soft">
-    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      {label}
+    </p>
     <p className="mt-2 font-display text-3xl font-bold">{value}</p>
     <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
   </Card>
@@ -613,71 +751,82 @@ const ProjectView = ({
   tasks: Task[];
   onBack: () => void;
   onLabel: (id: number) => void;
-}) => {
-  const rows = tasks;
-  return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
-        <ArrowLeft className="h-4 w-4" /> Back to projects
-      </button>
-      <div className="mt-3 flex items-end justify-between">
-        <div>
-          <h1 className="font-display text-3xl font-extrabold">{project.name}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {project.completed} of {project.tasks} tasks completed
-          </p>
-        </div>
+}) => (
+  <main className="mx-auto max-w-7xl px-6 py-10">
+    <button
+      onClick={onBack}
+      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+    >
+      <ArrowLeft className="h-4 w-4" /> Back to projects
+    </button>
+    <div className="mt-3 flex items-end justify-between">
+      <div>
+        <h1 className="font-display text-3xl font-extrabold">{project.name}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {project.completed} of {project.tasks} tasks completed
+        </p>
       </div>
-      <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
-        <div className="overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-6 py-3 text-left">ID</th>
-                <th className="px-6 py-3 text-left">Status</th>
-                <th className="px-6 py-3 text-left">Annotated by</th>
-                <th className="px-6 py-3 text-left">Text</th>
-                <th className="px-6 py-3 text-right">Action</th>
+    </div>
+    <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
+      <div className="overflow-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="px-6 py-3 text-left">ID</th>
+              <th className="px-6 py-3 text-left">Status</th>
+              <th className="px-6 py-3 text-left">Annotated by</th>
+              <th className="px-6 py-3 text-left">Text</th>
+              <th className="px-6 py-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((r) => (
+              <tr
+                key={r.id}
+                className="border-t border-border/60 transition hover:bg-muted/40"
+              >
+                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
+                  #{r.id}
+                </td>
+                <td className="px-6 py-4">
+                  <Badge
+                    variant="outline"
+                    className={
+                      r.completed
+                        ? "border-accent/30 bg-accent-soft text-accent"
+                        : "border-border text-muted-foreground"
+                    }
+                  >
+                    {r.completed ? "Done" : "Pending"}
+                  </Badge>
+                </td>
+                <td className="px-6 py-4 text-muted-foreground">{r.user}</td>
+                <td className="px-6 py-4">{r.text}</td>
+                <td className="px-6 py-4 text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={r.completed}
+                    onClick={() => onLabel(r.id)}
+                    className="text-accent hover:bg-accent-soft hover:text-accent disabled:opacity-40"
+                  >
+                    {r.completed ? (
+                      "Done"
+                    ) : (
+                      <>
+                        Label <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                      </>
+                    )}
+                  </Button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t border-border/60 transition hover:bg-muted/40">
-                  <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{r.id}</td>
-                  <td className="px-6 py-4">
-                    <Badge
-                      variant="outline"
-                      className={
-                        r.completed
-                          ? "border-accent/30 bg-accent-soft text-accent"
-                          : "border-border text-muted-foreground"
-                      }
-                    >
-                      {r.completed ? "Done" : "Pending"}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground">{r.user}</td>
-                  <td className="px-6 py-4">{r.text}</td>
-                  <td className="px-6 py-4 text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={r.completed}
-                      onClick={() => onLabel(r.id)}
-                      className="text-accent hover:bg-accent-soft hover:text-accent disabled:opacity-40"
-                    >
-                      {r.completed ? "Done" : <>Label <ArrowRight className="ml-1 h-3.5 w-3.5" /></>}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </main>
-  );
-};
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  </main>
+);
 
 /* ---------------- Labeling ---------------- */
 const Labeling = ({
@@ -689,7 +838,11 @@ const Labeling = ({
   taskId: number;
   tasks: Task[];
   onBack: () => void;
-  onSubmit: (id: number, transcript: string, tags: string[]) => Promise<void> | void;
+  onSubmit: (
+    id: number,
+    transcript: string,
+    tags: string[]
+  ) => Promise<void> | void;
 }) => {
   const current = tasks.find((t) => t.id === taskId);
   const sidebar = tasks.slice(0, 6);
@@ -698,7 +851,6 @@ const Labeling = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
-  // Reset all label state whenever the active task changes — no carry-over.
   useEffect(() => {
     setTranscript(current?.text ?? "");
     setSelectedTags([]);
@@ -719,19 +871,28 @@ const Labeling = ({
       setBusy(false);
     }
   };
+
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="flex items-center justify-between">
-        <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+        >
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
         <p className="text-sm text-muted-foreground">
-          Projects / Labeling · <span className="font-mono text-foreground">#{taskId}</span>
+          Projects / Labeling ·{" "}
+          <span className="font-mono text-foreground">#{taskId}</span>
         </p>
       </div>
+
       <div className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr_300px]">
+        {/* Sidebar — task list */}
         <Card className="border-border/60 p-5 shadow-soft">
-          <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Tasks</h4>
+          <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
+            Tasks
+          </h4>
           <div className="mt-4 space-y-2">
             {sidebar.map((t) => (
               <div
@@ -744,34 +905,66 @@ const Labeling = ({
                     : "border-border/60 bg-card"
                 }`}
               >
-                <span className="font-mono text-xs text-muted-foreground">#{t.id}</span>
+                <span className="font-mono text-xs text-muted-foreground">
+                  #{t.id}
+                </span>
                 <span className="truncate">{t.text}</span>
-                {t.completed && <Badge variant="outline" className="ml-auto border-accent/30 bg-accent-soft text-accent">Done</Badge>}
+                {t.completed && (
+                  <Badge
+                    variant="outline"
+                    className="ml-auto border-accent/30 bg-accent-soft text-accent"
+                  >
+                    Done
+                  </Badge>
+                )}
               </div>
             ))}
           </div>
         </Card>
+
+        {/* Center — labeling form */}
         <Card className="border-border/60 p-6 shadow-soft">
           <div className="relative h-24 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/70">
-            <svg viewBox="0 0 400 80" preserveAspectRatio="none" className="absolute inset-0 h-full w-full opacity-80">
+            <svg
+              viewBox="0 0 400 80"
+              preserveAspectRatio="none"
+              className="absolute inset-0 h-full w-full opacity-80"
+            >
               {Array.from({ length: 60 }).map((_, i) => {
                 const h = 10 + Math.abs(Math.sin(i * 0.6)) * 60;
-                return <rect key={i} x={i * 7} y={(80 - h) / 2} width={3} height={h} fill="hsl(var(--accent))" rx={1.5} />;
+                return (
+                  <rect
+                    key={i}
+                    x={i * 7}
+                    y={(80 - h) / 2}
+                    width={3}
+                    height={h}
+                    fill="hsl(var(--accent))"
+                    rx={1.5}
+                  />
+                );
               })}
             </svg>
           </div>
+
           <h3 className="mt-6 font-display text-lg font-bold">Transcription</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Please correct the transcript if needed.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Please correct the transcript if needed.
+          </p>
           <textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
             className="mt-3 min-h-24 w-full resize-none rounded-xl border border-border bg-background p-4 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
+
           <div className="mt-6">
             <h4 className="text-sm font-semibold">Tag any that apply</h4>
             <div className="mt-3 space-y-2">
               {TAG_OPTIONS.map((t) => (
-                <label key={t} className="flex items-center gap-3 rounded-lg border border-border/60 bg-card p-3 text-sm hover:border-accent/40">
+                <label
+                  key={t}
+                  className="flex items-center gap-3 rounded-lg border border-border/60 bg-card p-3 text-sm hover:border-accent/40 cursor-pointer"
+                >
                   <Checkbox
                     checked={selectedTags.includes(t)}
                     onCheckedChange={() => toggleTag(t)}
@@ -781,17 +974,34 @@ const Labeling = ({
               ))}
             </div>
           </div>
+
           <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" className="rounded-full">Skip</Button>
-            <Button onClick={handleSubmit} disabled={busy} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
-              {busy ? "Saving…" : "Submit"} <ArrowRight className="ml-1 h-4 w-4" />
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={onBack}
+            >
+              Skip
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={busy}
+              className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+            >
+              {busy ? "Saving…" : "Submit"}{" "}
+              <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
         </Card>
+
+        {/* Right — region details */}
         <Card className="border-border/60 p-5 shadow-soft">
-          <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Region details</h4>
+          <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
+            Region details
+          </h4>
           <p className="mt-3 text-sm text-muted-foreground">
-            Select a region on the waveform to view its properties, metadata and available actions.
+            Select a region on the waveform to view its properties, metadata
+            and available actions.
           </p>
         </Card>
       </div>
@@ -800,17 +1010,27 @@ const Labeling = ({
 };
 
 /* ---------------- AnnotatedBy ---------------- */
-const AnnotatedBy = ({ tasks, onBack }: { tasks: Task[]; onBack: () => void }) => {
+const AnnotatedBy = ({
+  tasks,
+  onBack,
+}: {
+  tasks: Task[];
+  onBack: () => void;
+}) => {
   const done = tasks.filter((t) => t.completed);
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
-      <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+      >
         <ArrowLeft className="h-4 w-4" /> Back to dashboard
       </button>
       <div className="mt-3">
         <h1 className="font-display text-3xl font-extrabold">Annotated By</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          All tasks have been completed. {done.length} task{done.length === 1 ? "" : "s"} annotated.
+          All tasks have been completed. {done.length} task
+          {done.length === 1 ? "" : "s"} annotated.
         </p>
       </div>
       <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
@@ -826,11 +1046,18 @@ const AnnotatedBy = ({ tasks, onBack }: { tasks: Task[]; onBack: () => void }) =
           <tbody>
             {done.map((t) => (
               <tr key={t.id} className="border-t border-border/60">
-                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{t.id}</td>
+                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
+                  #{t.id}
+                </td>
                 <td className="px-6 py-4">{t.user}</td>
                 <td className="px-6 py-4">{t.text}</td>
                 <td className="px-6 py-4">
-                  <Badge variant="outline" className="border-accent/30 bg-accent-soft text-accent">Done</Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-accent/30 bg-accent-soft text-accent"
+                  >
+                    Done
+                  </Badge>
                 </td>
               </tr>
             ))}
