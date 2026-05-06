@@ -38,11 +38,13 @@ import {
 } from "lucide-react";
 
 type Project = { id: number; name: string; tasks: number; completed: number };
+type Task = { id: number; completed: boolean; user: string; text: string };
 type Page =
   | { name: "login" }
   | { name: "dashboard" }
   | { name: "project"; id: number }
-  | { name: "label"; id: number };
+  | { name: "label"; id: number }
+  | { name: "annotatedBy"; projectId: number };
 
 const initialProjects: Project[] = [
   { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254 },
@@ -50,10 +52,19 @@ const initialProjects: Project[] = [
   { id: 3, name: "Voice Intent Tagging", tasks: 420, completed: 120 },
 ];
 
+const buildInitialTasks = (): Task[] =>
+  Array.from({ length: 12 }, (_, i) => ({
+    id: 15904 + i,
+    completed: i % 2 === 0,
+    user: `User ${(i % 3) + 1}`,
+    text: `ตัวอย่างข้อความ ${i + 1}`,
+  }));
+
 const Index = () => {
   const [user, setUser] = useState<{ email: string } | null>(null);
   const [page, setPage] = useState<Page>({ name: "login" });
   const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [tasks, setTasks] = useState<Task[]>(buildInitialTasks());
 
   const go = (p: Page) => {
     if (p.name !== "login" && !user) return setPage({ name: "login" });
@@ -94,12 +105,34 @@ const Index = () => {
       {page.name === "project" && (
         <ProjectView
           project={projects.find((p) => p.id === page.id)!}
+          tasks={tasks}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId) => go({ name: "label", id: taskId })}
         />
       )}
       {page.name === "label" && (
-        <Labeling taskId={page.id} onBack={() => go({ name: "dashboard" })} />
+        <Labeling
+          taskId={page.id}
+          tasks={tasks}
+          onBack={() => go({ name: "dashboard" })}
+          onSubmit={(submittedId) => {
+            const updated = tasks.map((t) =>
+              t.id === submittedId ? { ...t, completed: true, user: user?.email ?? t.user } : t
+            );
+            setTasks(updated);
+            const next = updated.find((t) => !t.completed);
+            if (next) {
+              toast.success("Submitted");
+              go({ name: "label", id: next.id });
+            } else {
+              toast.success("All tasks completed");
+              go({ name: "annotatedBy", projectId: 0 });
+            }
+          }}
+        />
+      )}
+      {page.name === "annotatedBy" && (
+        <AnnotatedBy tasks={tasks} onBack={() => go({ name: "dashboard" })} />
       )}
     </div>
   );
@@ -413,19 +446,16 @@ const Stat = ({ label, value, hint }: { label: string; value: string | number; h
 /* ---------------- Project View ---------------- */
 const ProjectView = ({
   project,
+  tasks,
   onBack,
   onLabel,
 }: {
   project: Project;
+  tasks: Task[];
   onBack: () => void;
   onLabel: (id: number) => void;
 }) => {
-  const rows = Array.from({ length: 12 }, (_, i) => ({
-    id: 15904 + i,
-    completed: i % 2 === 0,
-    user: `User ${(i % 3) + 1}`,
-    text: `ตัวอย่างข้อความ ${i + 1}`,
-  }));
+  const rows = tasks;
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
@@ -470,8 +500,14 @@ const ProjectView = ({
                   <td className="px-6 py-4 text-muted-foreground">{r.user}</td>
                   <td className="px-6 py-4">{r.text}</td>
                   <td className="px-6 py-4 text-right">
-                    <Button size="sm" variant="ghost" onClick={() => onLabel(r.id)} className="text-accent hover:bg-accent-soft hover:text-accent">
-                      Label <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={r.completed}
+                      onClick={() => onLabel(r.id)}
+                      className="text-accent hover:bg-accent-soft hover:text-accent disabled:opacity-40"
+                    >
+                      {r.completed ? "Done" : <>Label <ArrowRight className="ml-1 h-3.5 w-3.5" /></>}
                     </Button>
                   </td>
                 </tr>
@@ -485,7 +521,19 @@ const ProjectView = ({
 };
 
 /* ---------------- Labeling ---------------- */
-const Labeling = ({ taskId, onBack }: { taskId: number; onBack: () => void }) => {
+const Labeling = ({
+  taskId,
+  tasks,
+  onBack,
+  onSubmit,
+}: {
+  taskId: number;
+  tasks: Task[];
+  onBack: () => void;
+  onSubmit: (id: number) => void;
+}) => {
+  const current = tasks.find((t) => t.id === taskId);
+  const sidebar = tasks.slice(0, 6);
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="flex items-center justify-between">
@@ -500,15 +548,20 @@ const Labeling = ({ taskId, onBack }: { taskId: number; onBack: () => void }) =>
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Tasks</h4>
           <div className="mt-4 space-y-2">
-            {[1, 2, 3, 4].map((i) => (
+            {sidebar.map((t) => (
               <div
-                key={i}
+                key={t.id}
                 className={`flex items-center gap-3 rounded-lg border p-3 text-sm ${
-                  i === 1 ? "border-accent/40 bg-accent-soft" : "border-border/60 bg-card"
+                  t.id === taskId
+                    ? "border-accent/40 bg-accent-soft"
+                    : t.completed
+                    ? "border-border/60 bg-muted/40 opacity-60"
+                    : "border-border/60 bg-card"
                 }`}
               >
-                <span className="font-mono text-xs text-muted-foreground">#{i}</span>
-                <span className="truncate">ตัวอย่างข้อความ {i}</span>
+                <span className="font-mono text-xs text-muted-foreground">#{t.id}</span>
+                <span className="truncate">{t.text}</span>
+                {t.completed && <Badge variant="outline" className="ml-auto border-accent/30 bg-accent-soft text-accent">Done</Badge>}
               </div>
             ))}
           </div>
@@ -525,7 +578,8 @@ const Labeling = ({ taskId, onBack }: { taskId: number; onBack: () => void }) =>
           <h3 className="mt-6 font-display text-lg font-bold">Transcription</h3>
           <p className="mt-1 text-xs text-muted-foreground">Please correct the transcript if needed.</p>
           <textarea
-            defaultValue="ตัวอย่างข้อความที่ถอดเสียงได้ โปรดตรวจสอบและแก้ไข"
+            key={taskId}
+            defaultValue={current?.text ?? "ตัวอย่างข้อความที่ถอดเสียงได้ โปรดตรวจสอบและแก้ไข"}
             className="mt-3 min-h-24 w-full resize-none rounded-xl border border-border bg-background p-4 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
           <div className="mt-6">
@@ -540,7 +594,7 @@ const Labeling = ({ taskId, onBack }: { taskId: number; onBack: () => void }) =>
           </div>
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="outline" className="rounded-full">Skip</Button>
-            <Button onClick={() => toast.success("Submitted")} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
+            <Button onClick={() => onSubmit(taskId)} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
               Submit <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
@@ -552,6 +606,48 @@ const Labeling = ({ taskId, onBack }: { taskId: number; onBack: () => void }) =>
           </p>
         </Card>
       </div>
+    </main>
+  );
+};
+
+/* ---------------- AnnotatedBy ---------------- */
+const AnnotatedBy = ({ tasks, onBack }: { tasks: Task[]; onBack: () => void }) => {
+  const done = tasks.filter((t) => t.completed);
+  return (
+    <main className="mx-auto max-w-7xl px-6 py-10">
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
+        <ArrowLeft className="h-4 w-4" /> Back to dashboard
+      </button>
+      <div className="mt-3">
+        <h1 className="font-display text-3xl font-extrabold">Annotated By</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          All tasks have been completed. {done.length} task{done.length === 1 ? "" : "s"} annotated.
+        </p>
+      </div>
+      <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="px-6 py-3 text-left">ID</th>
+              <th className="px-6 py-3 text-left">Annotated by</th>
+              <th className="px-6 py-3 text-left">Text</th>
+              <th className="px-6 py-3 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {done.map((t) => (
+              <tr key={t.id} className="border-t border-border/60">
+                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{t.id}</td>
+                <td className="px-6 py-4">{t.user}</td>
+                <td className="px-6 py-4">{t.text}</td>
+                <td className="px-6 py-4">
+                  <Badge variant="outline" className="border-accent/30 bg-accent-soft text-accent">Done</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
     </main>
   );
 };
