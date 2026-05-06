@@ -446,19 +446,16 @@ const Stat = ({ label, value, hint }: { label: string; value: string | number; h
 /* ---------------- Project View ---------------- */
 const ProjectView = ({
   project,
+  tasks,
   onBack,
   onLabel,
 }: {
   project: Project;
+  tasks: Task[];
   onBack: () => void;
   onLabel: (id: number) => void;
 }) => {
-  const rows = Array.from({ length: 12 }, (_, i) => ({
-    id: 15904 + i,
-    completed: i % 2 === 0,
-    user: `User ${(i % 3) + 1}`,
-    text: `ตัวอย่างข้อความ ${i + 1}`,
-  }));
+  const rows = tasks;
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent">
