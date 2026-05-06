@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -545,6 +545,29 @@ const Labeling = ({
 }) => {
   const current = tasks.find((t) => t.id === taskId);
   const sidebar = tasks.slice(0, 6);
+  const TAG_OPTIONS = ["Multiple speakers", "Inaudible", "Background noise"];
+  const [transcript, setTranscript] = useState(current?.text ?? "");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // Reset all label state whenever the active task changes — no carry-over.
+  useEffect(() => {
+    setTranscript(current?.text ?? "");
+    setSelectedTags([]);
+  }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleTag = (tag: string) =>
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+
+  const handleSubmit = () => {
+    // Save labels for current task (placeholder — wire to backend when available).
+    console.log("Saving labels", { taskId, transcript, tags: selectedTags });
+    // Reset selections before advancing.
+    setSelectedTags([]);
+    setTranscript("");
+    onSubmit(taskId);
+  };
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="flex items-center justify-between">
@@ -589,23 +612,27 @@ const Labeling = ({
           <h3 className="mt-6 font-display text-lg font-bold">Transcription</h3>
           <p className="mt-1 text-xs text-muted-foreground">Please correct the transcript if needed.</p>
           <textarea
-            key={taskId}
-            defaultValue={current?.text ?? "ตัวอย่างข้อความที่ถอดเสียงได้ โปรดตรวจสอบและแก้ไข"}
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
             className="mt-3 min-h-24 w-full resize-none rounded-xl border border-border bg-background p-4 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
           <div className="mt-6">
             <h4 className="text-sm font-semibold">Tag any that apply</h4>
             <div className="mt-3 space-y-2">
-              {["Multiple speakers", "Inaudible", "Background noise"].map((t) => (
+              {TAG_OPTIONS.map((t) => (
                 <label key={t} className="flex items-center gap-3 rounded-lg border border-border/60 bg-card p-3 text-sm hover:border-accent/40">
-                  <Checkbox /> <span>{t}</span>
+                  <Checkbox
+                    checked={selectedTags.includes(t)}
+                    onCheckedChange={() => toggleTag(t)}
+                  />
+                  <span>{t}</span>
                 </label>
               ))}
             </div>
           </div>
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="outline" className="rounded-full">Skip</Button>
-            <Button onClick={() => onSubmit(taskId)} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
+            <Button onClick={handleSubmit} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
               Submit <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
