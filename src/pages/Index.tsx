@@ -870,8 +870,6 @@ const Labeling = ({
     setBusy(true);
     try {
       await onSubmit(taskId, transcript, selectedTags);
-      setSelectedTags([]);
-      setTranscript("");
     } finally {
       setBusy(false);
     }
