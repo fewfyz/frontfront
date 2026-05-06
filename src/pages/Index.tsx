@@ -194,7 +194,7 @@ const Index = () => {
   }
 
   if (!authUser) {
-    return <Login />;
+    return <Login onLocalLogin={(u: User) => { setAuthUser(u); setAuthReady(true); }} />;
   }
 
   return (
@@ -283,7 +283,7 @@ const TopBar = ({
 };
 
 /* ---------------- Login ---------------- */
-const Login = () => {
+const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -292,26 +292,40 @@ const Login = () => {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !pass) {
-      toast.error("Please enter email and password");
+      toast.error("Please enter email/username and password");
       return;
     }
     setBusy(true);
     try {
-      if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: pass,
-          options: { emailRedirectTo: `${window.location.origin}/` },
-        });
-        if (error) throw error;
-        toast.success("Account created — you're signed in");
+      // Accept either full email or a simple username for testing.
+      // If the input doesn't contain '@', append a test domain so Supabase can accept it.
+      const credentialEmail = email.includes("@") ? email.trim() : `${email.trim()}@example.com`;
+
+      // If this is a test username (we appended @example.com) allow a local/dev login
+      const isDevLogin = credentialEmail.endsWith("@example.com");
+      if (isDevLogin) {
+        // Bypass Supabase for quick local testing — create a lightweight User object
+        const devUser = { id: `dev:${credentialEmail}`, email: credentialEmail } as unknown as User;
+        onLocalLogin?.(devUser);
+        toast.success(`Signed in (dev): ${email}`);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: pass,
-        });
-        if (error) throw error;
-        toast.success(`Welcome, ${email.split("@")[0]}`);
+        if (mode === "signup") {
+          const { error } = await supabase.auth.signUp({
+            email: credentialEmail,
+            password: pass,
+            options: { emailRedirectTo: `${window.location.origin}/` },
+          });
+          if (error) throw error;
+          toast.success("Account created — you're signed in");
+        } else {
+          const { error } = await supabase.auth.signInWithPassword({
+            email: credentialEmail,
+            password: pass,
+          });
+          if (error) throw error;
+          const display = email.includes("@") ? email.split("@")[0] : email;
+          toast.success(`Welcome, ${display}`);
+        }
       }
     } catch (err: any) {
       toast.error(err?.message ?? "Authentication failed");
@@ -353,20 +367,20 @@ const Login = () => {
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {mode === "signin"
-              ? "Sign in to resume your labeling progress."
-              : "Sign up to start labeling — your progress will be saved automatically."}
+              ? "Sign in to resume your labeling progress. You may enter username or email."
+              : "Sign up to start labeling — you can provide a username or email for testing."}
           </p>
           <form onSubmit={submit} className="mt-8 space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email or username</Label>
               <Input
                 id="email"
-                type="email"
-                placeholder="you@example.com"
+                type="text"
+                placeholder="you@example.com or username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11"
-                autoComplete="email"
+                autoComplete="off"
               />
             </div>
             <div className="space-y-2">
@@ -391,7 +405,7 @@ const Login = () => {
             </Button>
           </form>
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            {mode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}
+            {mode === "signin" ? "Don't have an account?" : "Already have an account?"} {" "}
             <button
               type="button"
               onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
