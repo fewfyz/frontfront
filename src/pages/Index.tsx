@@ -36,11 +36,19 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 type Project = { id: number; name: string; tasks: number; completed: number };
-type Task = { id: number; completed: boolean; user: string; text: string };
+type Task = {
+  id: number;
+  completed: boolean;
+  user: string;
+  text: string;
+  transcript?: string;
+  tags?: string[];
+};
 type Page =
-  | { name: "login" }
   | { name: "dashboard" }
   | { name: "project"; id: number }
   | { name: "label"; id: number }
@@ -55,18 +63,77 @@ const initialProjects: Project[] = [
 const buildInitialTasks = (): Task[] =>
   Array.from({ length: 12 }, (_, i) => ({
     id: 15904 + i,
-    completed: i % 2 === 0,
-    user: `User ${(i % 3) + 1}`,
+    completed: false,
+    user: "",
     text: `ตัวอย่างข้อความ ${i + 1}`,
   }));
 
 const Index = () => {
-  const [user, setUser] = useState<{ email: string } | null>(null);
-  const [page, setPage] = useState<Page>({ name: "login" });
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [page, setPage] = useState<Page>({ name: "dashboard" });
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [tasks, setTasks] = useState<Task[]>(buildInitialTasks());
+  const [tasksLoaded, setTasksLoaded] = useState(false);
 
-  // Sync project 1 progress with the live task list (no hardcoded counts).
+  // Auth bootstrap — listener first, then session.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ?? null);
+      setAuthReady(true);
+    });
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthUser(data.session?.user ?? null);
+      setAuthReady(true);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Load this user's saved progress and merge into the local task list.
+  useEffect(() => {
+    if (!authUser) {
+      setTasks(buildInitialTasks());
+      setTasksLoaded(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("task_progress")
+        .select("task_id, transcript, tags, completed")
+        .eq("user_id", authUser.id);
+      if (cancelled) return;
+      if (error) {
+        toast.error("Failed to load your progress");
+        setTasksLoaded(true);
+        return;
+      }
+      const base = buildInitialTasks();
+      const byId = new Map(data?.map((r) => [r.task_id, r]) ?? []);
+      const merged = base.map((t) => {
+        const r = byId.get(t.id);
+        return r
+          ? {
+              ...t,
+              completed: r.completed,
+              user: r.completed ? authUser.email ?? "" : "",
+              transcript: r.transcript ?? undefined,
+              tags: r.tags ?? [],
+            }
+          : t;
+      });
+      setTasks(merged);
+      setTasksLoaded(true);
+      // If everything done, jump to AnnotatedBy.
+      if (merged.every((t) => t.completed)) {
+        setPage({ name: "annotatedBy", projectId: 0 });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser]);
+
   const syncedProjects = useMemo(
     () =>
       projects.map((p) =>
@@ -77,31 +144,66 @@ const Index = () => {
     [projects, tasks]
   );
 
-  const go = (p: Page) => {
-    if (p.name !== "login" && !user) return setPage({ name: "login" });
-    setPage(p);
+  const go = (p: Page) => setPage(p);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("Signed out — your progress is saved");
+    setPage({ name: "dashboard" });
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setPage({ name: "login" });
-    toast.success("Signed out successfully");
+  const handleSubmitTask = async (
+    submittedId: number,
+    transcript: string,
+    tags: string[]
+  ) => {
+    if (!authUser) return;
+    const { error } = await supabase.from("task_progress").upsert(
+      {
+        user_id: authUser.id,
+        task_id: submittedId,
+        transcript,
+        tags,
+        completed: true,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,task_id" }
+    );
+    if (error) {
+      toast.error("Could not save progress");
+      return;
+    }
+    const updated = tasks.map((t) =>
+      t.id === submittedId
+        ? { ...t, completed: true, user: authUser.email ?? "", transcript, tags }
+        : t
+    );
+    setTasks(updated);
+    const next = updated.find((t) => !t.completed);
+    if (next) {
+      toast.success("Submitted");
+      go({ name: "label", id: next.id });
+    } else {
+      toast.success("All tasks completed");
+      go({ name: "annotatedBy", projectId: 0 });
+    }
   };
+
+  if (!authReady) {
+    return <div className="grid min-h-screen place-items-center bg-background text-muted-foreground">Loading…</div>;
+  }
+
+  if (!authUser) {
+    return <Login />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {user && page.name !== "login" && (
-        <TopBar user={user} onLogout={handleLogout} onHome={() => go({ name: "dashboard" })} />
-      )}
-      {page.name === "login" && (
-        <Login
-          onLogin={(email) => {
-            setUser({ email });
-            setPage({ name: "dashboard" });
-            toast.success(`Welcome, ${email.split("@")[0]}`);
-          }}
-        />
-      )}
+      <TopBar
+        user={{ email: authUser.email ?? "user" }}
+        onLogout={handleLogout}
+        onHome={() => go({ name: "dashboard" })}
+      />
       {page.name === "dashboard" && (
         <Dashboard
           projects={syncedProjects}
@@ -121,25 +223,12 @@ const Index = () => {
           onLabel={(taskId) => go({ name: "label", id: taskId })}
         />
       )}
-      {page.name === "label" && (
+      {page.name === "label" && tasksLoaded && (
         <Labeling
           taskId={page.id}
           tasks={tasks}
           onBack={() => go({ name: "dashboard" })}
-          onSubmit={(submittedId) => {
-            const updated = tasks.map((t) =>
-              t.id === submittedId ? { ...t, completed: true, user: user?.email ?? t.user } : t
-            );
-            setTasks(updated);
-            const next = updated.find((t) => !t.completed);
-            if (next) {
-              toast.success("Submitted");
-              go({ name: "label", id: next.id });
-            } else {
-              toast.success("All tasks completed");
-              go({ name: "annotatedBy", projectId: 0 });
-            }
-          }}
+          onSubmit={handleSubmitTask}
         />
       )}
       {page.name === "annotatedBy" && (
@@ -194,13 +283,43 @@ const TopBar = ({
 };
 
 /* ---------------- Login ---------------- */
-const Login = ({ onLogin }: { onLogin: (email: string) => void }) => {
+const Login = () => {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
-  const submit = (e: React.FormEvent) => {
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(email.trim() || "tester@example.com");
+    if (!email.trim() || !pass) {
+      toast.error("Please enter email and password");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (mode === "signup") {
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: pass,
+          options: { emailRedirectTo: `${window.location.origin}/` },
+        });
+        if (error) throw error;
+        toast.success("Account created — you're signed in");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: pass,
+        });
+        if (error) throw error;
+        toast.success(`Welcome, ${email.split("@")[0]}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message ?? "Authentication failed");
+    } finally {
+      setBusy(false);
+    }
   };
+
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <section className="relative hidden flex-col justify-between overflow-hidden bg-gradient-hero p-12 lg:flex">
@@ -229,20 +348,25 @@ const Login = ({ onLogin }: { onLogin: (email: string) => void }) => {
 
       <section className="flex items-center justify-center p-6 sm:p-12">
         <Card className="w-full max-w-md border-border/60 p-8 shadow-soft sm:p-10">
-          <h2 className="font-display text-3xl font-bold">Welcome back</h2>
+          <h2 className="font-display text-3xl font-bold">
+            {mode === "signin" ? "Welcome back" : "Create your account"}
+          </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to continue. Any email and password will work.
+            {mode === "signin"
+              ? "Sign in to resume your labeling progress."
+              : "Sign up to start labeling — your progress will be saved automatically."}
           </p>
           <form onSubmit={submit} className="mt-8 space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email">Username or email</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
-                type="text"
-                placeholder="your username or email"
+                type="email"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11"
+                autoComplete="email"
               />
             </div>
             <div className="space-y-2">
@@ -254,18 +378,28 @@ const Login = ({ onLogin }: { onLogin: (email: string) => void }) => {
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
                 className="h-11"
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="remember" />
-              <label htmlFor="remember" className="text-sm text-muted-foreground">
-                Keep me signed in on this browser
-              </label>
-            </div>
-            <Button type="submit" className="h-11 w-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
-              Sign in <ArrowRight className="ml-1 h-4 w-4" />
+            <Button
+              type="submit"
+              disabled={busy}
+              className="h-11 w-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+            >
+              {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Sign up"}
+              <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </form>
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            {mode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}
+            <button
+              type="button"
+              onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+              className="font-medium text-accent hover:underline"
+            >
+              {mode === "signin" ? "Sign up" : "Sign in"}
+            </button>
+          </p>
         </Card>
       </section>
     </main>
@@ -541,13 +675,14 @@ const Labeling = ({
   taskId: number;
   tasks: Task[];
   onBack: () => void;
-  onSubmit: (id: number) => void;
+  onSubmit: (id: number, transcript: string, tags: string[]) => Promise<void> | void;
 }) => {
   const current = tasks.find((t) => t.id === taskId);
   const sidebar = tasks.slice(0, 6);
   const TAG_OPTIONS = ["Multiple speakers", "Inaudible", "Background noise"];
   const [transcript, setTranscript] = useState(current?.text ?? "");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
 
   // Reset all label state whenever the active task changes — no carry-over.
   useEffect(() => {
@@ -560,13 +695,15 @@ const Labeling = ({
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
 
-  const handleSubmit = () => {
-    // Save labels for current task (placeholder — wire to backend when available).
-    console.log("Saving labels", { taskId, transcript, tags: selectedTags });
-    // Reset selections before advancing.
-    setSelectedTags([]);
-    setTranscript("");
-    onSubmit(taskId);
+  const handleSubmit = async () => {
+    setBusy(true);
+    try {
+      await onSubmit(taskId, transcript, selectedTags);
+      setSelectedTags([]);
+      setTranscript("");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
@@ -632,8 +769,8 @@ const Labeling = ({
           </div>
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="outline" className="rounded-full">Skip</Button>
-            <Button onClick={handleSubmit} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
-              Submit <ArrowRight className="ml-1 h-4 w-4" />
+            <Button onClick={handleSubmit} disabled={busy} className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95">
+              {busy ? "Saving…" : "Submit"} <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
         </Card>
