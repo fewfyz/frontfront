@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +66,17 @@ const Index = () => {
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [tasks, setTasks] = useState<Task[]>(buildInitialTasks());
 
+  // Sync project 1 progress with the live task list (no hardcoded counts).
+  const syncedProjects = useMemo(
+    () =>
+      projects.map((p) =>
+        p.id === 1
+          ? { ...p, tasks: tasks.length, completed: tasks.filter((t) => t.completed).length }
+          : p
+      ),
+    [projects, tasks]
+  );
+
   const go = (p: Page) => {
     if (p.name !== "login" && !user) return setPage({ name: "login" });
     setPage(p);
@@ -93,7 +104,7 @@ const Index = () => {
       )}
       {page.name === "dashboard" && (
         <Dashboard
-          projects={projects}
+          projects={syncedProjects}
           onOpen={(id) => go({ name: "project", id })}
           onCreate={(name) => {
             const np = { id: Date.now(), name, tasks: 0, completed: 0 };
@@ -104,7 +115,7 @@ const Index = () => {
       )}
       {page.name === "project" && (
         <ProjectView
-          project={projects.find((p) => p.id === page.id)!}
+          project={syncedProjects.find((p) => p.id === page.id)!}
           tasks={tasks}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId) => go({ name: "label", id: taskId })}
