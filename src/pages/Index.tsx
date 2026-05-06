@@ -38,11 +38,13 @@ import {
 } from "lucide-react";
 
 type Project = { id: number; name: string; tasks: number; completed: number };
+type Task = { id: number; completed: boolean; user: string; text: string };
 type Page =
   | { name: "login" }
   | { name: "dashboard" }
   | { name: "project"; id: number }
-  | { name: "label"; id: number };
+  | { name: "label"; id: number }
+  | { name: "annotatedBy"; projectId: number };
 
 const initialProjects: Project[] = [
   { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254 },
@@ -50,10 +52,19 @@ const initialProjects: Project[] = [
   { id: 3, name: "Voice Intent Tagging", tasks: 420, completed: 120 },
 ];
 
+const buildInitialTasks = (): Task[] =>
+  Array.from({ length: 12 }, (_, i) => ({
+    id: 15904 + i,
+    completed: i % 2 === 0,
+    user: `User ${(i % 3) + 1}`,
+    text: `ตัวอย่างข้อความ ${i + 1}`,
+  }));
+
 const Index = () => {
   const [user, setUser] = useState<{ email: string } | null>(null);
   const [page, setPage] = useState<Page>({ name: "login" });
   const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [tasks, setTasks] = useState<Task[]>(buildInitialTasks());
 
   const go = (p: Page) => {
     if (p.name !== "login" && !user) return setPage({ name: "login" });
@@ -94,12 +105,34 @@ const Index = () => {
       {page.name === "project" && (
         <ProjectView
           project={projects.find((p) => p.id === page.id)!}
+          tasks={tasks}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId) => go({ name: "label", id: taskId })}
         />
       )}
       {page.name === "label" && (
-        <Labeling taskId={page.id} onBack={() => go({ name: "dashboard" })} />
+        <Labeling
+          taskId={page.id}
+          tasks={tasks}
+          onBack={() => go({ name: "dashboard" })}
+          onSubmit={(submittedId) => {
+            const updated = tasks.map((t) =>
+              t.id === submittedId ? { ...t, completed: true, user: user?.email ?? t.user } : t
+            );
+            setTasks(updated);
+            const next = updated.find((t) => !t.completed);
+            if (next) {
+              toast.success("Submitted");
+              go({ name: "label", id: next.id });
+            } else {
+              toast.success("All tasks completed");
+              go({ name: "annotatedBy", projectId: 0 });
+            }
+          }}
+        />
+      )}
+      {page.name === "annotatedBy" && (
+        <AnnotatedBy tasks={tasks} onBack={() => go({ name: "dashboard" })} />
       )}
     </div>
   );
