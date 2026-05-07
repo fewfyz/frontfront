@@ -35,6 +35,8 @@ import {
   Sparkles,
   UserPlus,
   Users,
+  UploadCloud,
+  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -600,6 +602,57 @@ const Dashboard = ({
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const DEFAULT_TAGS = ["Multiple speakers", "Inaudible", "Background noise"];
+  const [tags, setTags] = useState<string[]>([...DEFAULT_TAGS]);
+  const [tagInput, setTagInput] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const MAX_TAGS = 6;
+  const tagsFull = tags.length >= MAX_TAGS;
+
+  const acceptExt = [".csv", ".xlsx", ".txt", ".json"];
+  const isAccepted = (f: File) =>
+    acceptExt.some((ext) => f.name.toLowerCase().endsWith(ext));
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const f = files[0];
+    if (!isAccepted(f)) {
+      toast.error("Unsupported file. Use CSV, XLSX, TXT, or JSON.");
+      return;
+    }
+    setFile(f);
+  };
+
+  const addTag = () => {
+    const v = tagInput.trim();
+    if (!v) return;
+    if (tagsFull) {
+      toast.error("Maximum tags reached");
+      return;
+    }
+    if (tags.some((t) => t.toLowerCase() === v.toLowerCase())) {
+      toast.error("Tag already exists");
+      return;
+    }
+    setTags([...tags, v]);
+    setTagInput("");
+  };
+
+  const removeTag = (t: string) => {
+    if (DEFAULT_TAGS.includes(t)) return;
+    setTags(tags.filter((x) => x !== t));
+  };
+
+  const resetModal = () => {
+    setNewName("");
+    setNewDesc("");
+    setTags([...DEFAULT_TAGS]);
+    setTagInput("");
+    setFile(null);
+    setDragOver(false);
+  };
+
   const totals = useMemo(() => {
     const tasks = projects.reduce((s, p) => s + p.tasks, 0);
     const done = projects.reduce((s, p) => s + p.completed, 0);
@@ -635,51 +688,170 @@ const Dashboard = ({
         </div>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-md">
-          <div className="bg-gradient-hero rounded-t-2xl px-7 pb-5 pt-7">
-            <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-accent shadow-glow">
-                <Plus className="h-5 w-5 text-accent-foreground" />
-              </div>
-              <DialogHeader className="space-y-1 text-left">
-                <DialogTitle className="font-display text-2xl font-bold tracking-tight">
-                  Create new project
-                </DialogTitle>
-                <DialogDescription className="text-sm">
-                  Set up a workspace for your annotation tasks.
-                </DialogDescription>
-              </DialogHeader>
-            </div>
-          </div>
-          <div className="space-y-5 px-7 py-6">
-            <div className="space-y-2">
-              <Label htmlFor="proj-name">Project name</Label>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) resetModal();
+        }}
+      >
+        <DialogContent className="rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-lg">
+          <DialogHeader className="space-y-1 px-7 pb-2 pt-6 text-left">
+            <DialogTitle className="font-display text-xl font-semibold tracking-tight">
+              Create new project
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Set up a workspace for your annotation tasks.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 px-7 py-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="proj-name" className="text-sm font-medium">
+                Project name
+              </Label>
               <Input
                 id="proj-name"
                 placeholder="e.g. Customer Support Audio"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="h-11 rounded-xl"
+                className="h-10 rounded-lg"
                 autoFocus
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="proj-desc">
+
+            <div className="space-y-1.5">
+              <Label htmlFor="proj-desc" className="text-sm font-medium">
                 Description{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional)
-                </span>
+                <span className="font-normal text-muted-foreground">(optional)</span>
               </Label>
               <Textarea
                 id="proj-desc"
                 placeholder="What's this project about?"
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
-                className="min-h-24 rounded-xl"
+                className="min-h-20 rounded-lg"
               />
             </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Upload dataset</Label>
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  handleFiles(e.dataTransfer.files);
+                }}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-7 text-center transition ${
+                  dragOver
+                    ? "border-accent bg-accent-soft"
+                    : "border-border bg-muted/30 hover:bg-muted/50"
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.txt,.json"
+                  className="hidden"
+                  onChange={(e) => handleFiles(e.target.files)}
+                />
+                {file ? (
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-accent" />
+                    <span className="text-sm font-medium">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setFile(null);
+                      }}
+                      className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <UploadCloud className="h-7 w-7 text-muted-foreground" />
+                    <div className="text-sm">
+                      <span className="font-medium text-foreground">
+                        Click to upload
+                      </span>{" "}
+                      <span className="text-muted-foreground">or drag and drop</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      CSV, XLSX, TXT, or JSON
+                    </p>
+                  </>
+                )}
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Tags</Label>
+                <span className="text-xs text-muted-foreground">
+                  {tagsFull ? "Maximum tags reached" : "You can add up to 6 tags"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((t) => {
+                  const isDefault = DEFAULT_TAGS.includes(t);
+                  return (
+                    <span
+                      key={t}
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        isDefault
+                          ? "bg-secondary text-secondary-foreground"
+                          : "bg-accent-soft text-accent"
+                      }`}
+                    >
+                      {t}
+                      {!isDefault && (
+                        <button
+                          type="button"
+                          onClick={() => removeTag(t)}
+                          className="rounded-full p-0.5 hover:bg-background/60"
+                          aria-label={`Remove ${t}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Input
+                  placeholder="Add custom tag"
+                  value={tagInput}
+                  disabled={tagsFull}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  className="h-9 rounded-lg text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addTag}
+                  disabled={tagsFull || !tagInput.trim()}
+                  className="h-9 rounded-lg"
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
           </div>
+
           <DialogFooter className="gap-2 rounded-b-2xl border-t border-border/60 bg-muted/30 px-7 py-4">
             <Button
               variant="outline"
@@ -692,8 +864,7 @@ const Dashboard = ({
               disabled={!newName.trim()}
               onClick={() => {
                 onCreate(newName.trim());
-                setNewName("");
-                setNewDesc("");
+                resetModal();
                 setOpen(false);
               }}
               className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
