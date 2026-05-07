@@ -41,7 +41,14 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-type Project = { id: number; name: string; tasks: number; completed: number };
+type Project = {
+  id: number;
+  name: string;
+  tasks: number;
+  completed: number;
+  tags?: string[];
+  demo?: boolean;
+};
 type Task = {
   id: number;
   completed: boolean;
@@ -57,9 +64,9 @@ type Page =
   | { name: "annotatedBy"; projectId: number };
 
 const initialProjects: Project[] = [
-  { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254 },
-  { id: 2, name: "Speech QA – Batch 03", tasks: 1800, completed: 0 },
-  { id: 3, name: "Voice Intent Tagging", tasks: 420, completed: 120 },
+  { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
+  { id: 2, name: "Speech QA – Batch 03", tasks: 1800, completed: 0, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
+  { id: 3, name: "Voice Intent Tagging", tasks: 420, completed: 120, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
 ];
 
 const buildInitialTasks = (): Task[] =>
