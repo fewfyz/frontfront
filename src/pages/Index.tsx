@@ -881,7 +881,7 @@ const Dashboard = ({
             <Button
               disabled={!newName.trim()}
               onClick={() => {
-                onCreate(newName.trim());
+               onCreate(newName.trim(), tags);
                 resetModal();
                 setOpen(false);
               }}
