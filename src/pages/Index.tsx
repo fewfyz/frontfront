@@ -614,7 +614,7 @@ const Dashboard = ({
 }: {
   projects: Project[];
   onOpen: (id: number) => void;
-  onCreate: (name: string) => void;
+  onCreate: (name: string, tags: string[]) => void;
   onDelete: (id: number) => void;
 }) => {
   const [open, setOpen] = useState(false);
