@@ -37,6 +37,9 @@ import {
   Users,
   UploadCloud,
   X,
+  ChevronDown,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -60,7 +63,7 @@ type Task = {
 type Page =
   | { name: "dashboard" }
   | { name: "project"; id: number }
-  | { name: "label"; id: number }
+  | { name: "label"; id: number; projectId: number }
   | { name: "annotatedBy"; projectId: number };
 
 const initialProjects: Project[] = [
@@ -111,7 +114,6 @@ const Index = () => {
   const [page, setPage] = useState<Page>({ name: "dashboard" });
   const [projects, setProjects] = useState<Project[]>(initialProjects);
 
-  // build per-project demo tasks (unique ids per project)
   const buildTasksForProject = (projectId: number, name?: string): Task[] =>
     Array.from({ length: 12 }, (_, i) => ({
       id: projectId * 100000 + 15904 + i,
@@ -127,9 +129,88 @@ const Index = () => {
   );
   const [tasksLoaded, setTasksLoaded] = useState(false);
 
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editTagInput, setEditTagInput] = useState("");
+  const [editFile, setEditFile] = useState<File | null>(null);
+  const [editDragOver, setEditDragOver] = useState(false);
+
+  const promptDeleteProject = (p: Project) => {
+    setProjectToDelete(p);
+    setConfirmDeleteOpen(true);
+  };
+
+  const confirmDeleteProject = (id?: number) => {
+    const pid = id ?? projectToDelete?.id;
+    if (!pid) return;
+    setProjects((prev) => prev.filter((p) => p.id !== pid));
+    setTasksByProject((prev) => {
+      const copy = { ...prev };
+      delete copy[pid];
+      return copy;
+    });
+    toast.success("Project deleted");
+    setConfirmDeleteOpen(false);
+    setProjectToDelete(null);
+    setPage({ name: "dashboard" });
+  };
+
+  const promptEditProject = (p: Project) => {
+    setProjectToEdit(p);
+    setEditName(p.name);
+    setEditTags(p.tags ?? []);
+    setEditTagInput("");
+    setEditFile(null);
+    setEditDragOver(false);
+    setEditOpen(true);
+  };
+
+  const saveEditProject = () => {
+    if (!projectToEdit) return;
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectToEdit.id ? { ...p, name: editName, tags: editTags } : p
+      )
+    );
+    if (editFile) toast.success(`Dataset "${editFile.name}" uploaded`);
+    setEditOpen(false);
+    setProjectToEdit(null);
+    toast.success("Project updated");
+  };
+
+  const addEditTag = () => {
+    const v = editTagInput.trim();
+    if (!v) return;
+    if (editTags.some((t) => t.toLowerCase() === v.toLowerCase())) {
+      toast.error("Tag already exists");
+      return;
+    }
+    setEditTags((s) => [...s, v]);
+    setEditTagInput("");
+  };
+
+  const removeEditTag = (t: string) => setEditTags((s) => s.filter((x) => x !== t));
+
+  const acceptEditExt = [".csv", ".xlsx", ".txt", ".json"];
+  const isAcceptedEdit = (f: File) =>
+    acceptEditExt.some((ext) => f.name.toLowerCase().endsWith(ext));
+
+  const handleEditFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const f = files[0];
+    if (!isAcceptedEdit(f)) {
+      toast.error("Unsupported file. Use CSV, XLSX, TXT, or JSON.");
+      return;
+    }
+    setEditFile(f);
+  };
+
   const allTasks = useMemo(() => Object.values(tasksByProject).flat(), [tasksByProject]);
 
-  // Auth bootstrap
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthUser(session?.user ?? null);
@@ -142,10 +223,8 @@ const Index = () => {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Load progress
   useEffect(() => {
     if (!authUser) {
-      // reset demo tasks per project when signed out
       setTasksByProject(
         Object.fromEntries(
           initialProjects.map((p) => [p.id, buildTasksForProject(p.id, p.name)])
@@ -155,7 +234,6 @@ const Index = () => {
       return;
     }
 
-    // Dev user: merge localStorage progress into every project's tasks
     if (isDevUser(authUser)) {
       const saved = loadDevProgress();
       const mergedMap: Record<number, Task[]> = {};
@@ -175,7 +253,6 @@ const Index = () => {
       return;
     }
 
-    // Real user: load progress from Supabase and merge into per-project tasks
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
@@ -242,7 +319,6 @@ const Index = () => {
   ) => {
     if (!authUser) return;
 
-    // Find which project this task belongs to
     const projectEntry = Object.entries(tasksByProject).find(([_, list]) =>
       list.some((t) => t.id === submittedId)
     );
@@ -254,7 +330,6 @@ const Index = () => {
     const project = projects.find((p) => p.id === projectId);
     const isDemoProject = project?.demo === true;
 
-    // ── Dev user OR demo project: save to localStorage / in-memory only ──
     if (isDevUser(authUser) || isDemoProject) {
       saveDevProgress(submittedId, transcript, tags, true);
       const updatedMap = { ...tasksByProject };
@@ -264,11 +339,10 @@ const Index = () => {
           : t
       );
       setTasksByProject(updatedMap);
-      // Only look for next task within the SAME project
       const next = updatedMap[projectId].find((t) => !t.completed);
       if (next) {
         toast.success("Submitted");
-        setPage({ name: "label", id: next.id });
+        setPage({ name: "label", id: next.id, projectId });
       } else {
         toast.success("All tasks completed! 🎉");
         setPage({ name: "annotatedBy", projectId });
@@ -276,7 +350,6 @@ const Index = () => {
       return;
     }
 
-    // ── Real user: save to Supabase and update local state ──
     const { error } = await supabase.from("task_progress").upsert(
       {
         user_id: authUser.id,
@@ -302,7 +375,7 @@ const Index = () => {
     const next = updatedMap[projectId].find((t) => !t.completed);
     if (next) {
       toast.success("Submitted");
-      setPage({ name: "label", id: next.id });
+      setPage({ name: "label", id: next.id, projectId });
     } else {
       toast.success("All tasks completed");
       setPage({ name: "annotatedBy", projectId });
@@ -335,35 +408,186 @@ const Index = () => {
         onLogout={handleLogout}
         onHome={() => go({ name: "dashboard" })}
       />
+
+      {/* Confirm delete dialog */}
+      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <DialogContent className="rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-md">
+          <div className="bg-gradient-hero rounded-t-2xl px-7 pb-5 pt-7">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-xl bg-destructive/10">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <DialogHeader className="space-y-1 text-left">
+                <DialogTitle className="font-display text-2xl font-bold tracking-tight">Delete project</DialogTitle>
+                <DialogDescription className="text-sm">This action cannot be undone — all tasks for this project will be removed locally.</DialogDescription>
+              </DialogHeader>
+            </div>
+          </div>
+          <div className="px-7 py-5">
+            <p className="text-sm">Are you sure you want to delete "<span className="font-semibold">{projectToDelete?.name}</span>"?</p>
+          </div>
+          <DialogFooter className="gap-2 rounded-b-2xl border-t border-border/60 bg-muted/30 px-7 py-4">
+            <Button variant="outline" onClick={() => setConfirmDeleteOpen(false)} className="rounded-full">Cancel</Button>
+            <Button onClick={() => confirmDeleteProject()} className="rounded-full bg-destructive text-destructive-foreground shadow-glow hover:opacity-95">Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit project dialog — same layout as Create ── */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-lg">
+          <DialogHeader className="space-y-1 px-7 pb-2 pt-6 text-left">
+            <DialogTitle className="font-display text-xl font-semibold tracking-tight">
+              Edit project
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Update project name, dataset, or tags.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 px-7 py-5">
+            {/* Project name */}
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name" className="text-sm font-medium">
+                Project name
+              </Label>
+              <Input
+                id="edit-name"
+                placeholder="e.g. Customer Support Audio"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="h-10 rounded-lg"
+                autoFocus
+              />
+            </div>
+
+            {/* Upload dataset */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">
+                Upload dataset{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <label
+                onDragOver={(e) => { e.preventDefault(); setEditDragOver(true); }}
+                onDragLeave={() => setEditDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setEditDragOver(false); handleEditFiles(e.dataTransfer.files); }}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-7 text-center transition ${
+                  editDragOver
+                    ? "border-accent bg-accent-soft"
+                    : "border-border bg-muted/30 hover:bg-muted/50"
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.txt,.json"
+                  className="hidden"
+                  onChange={(e) => handleEditFiles(e.target.files)}
+                />
+                {editFile ? (
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-accent" />
+                    <span className="text-sm font-medium">{editFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setEditFile(null); }}
+                      className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <UploadCloud className="h-7 w-7 text-muted-foreground" />
+                    <div className="text-sm">
+                      <span className="font-medium text-foreground">Click to upload</span>{" "}
+                      <span className="text-muted-foreground">or drag and drop</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">CSV, XLSX, TXT, or JSON</p>
+                  </>
+                )}
+              </label>
+            </div>
+
+            {/* Tags */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Tags</Label>
+                <span className="text-xs text-muted-foreground">
+                  {editTags.length >= 6 ? "Maximum tags reached" : "You can add up to 6 tags"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {editTags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1 rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-xs font-medium"
+                  >
+                    {t}
+                    <button
+                      type="button"
+                      onClick={() => removeEditTag(t)}
+                      className="rounded-full p-0.5 hover:bg-background/60"
+                      aria-label={`Remove ${t}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Input
+                  placeholder="Add custom tag"
+                  value={editTagInput}
+                  disabled={editTags.length >= 6}
+                  onChange={(e) => setEditTagInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEditTag(); } }}
+                  className="h-9 rounded-lg text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addEditTag}
+                  disabled={editTags.length >= 6 || !editTagInput.trim()}
+                  className="h-9 rounded-lg"
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 rounded-b-2xl border-t border-border/60 bg-muted/30 px-7 py-4">
+            <Button
+              variant="outline"
+              onClick={() => setEditOpen(false)}
+              className="rounded-full"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!editName.trim()}
+              onClick={saveEditProject}
+              className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+            >
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {page.name === "dashboard" && (
         <Dashboard
           projects={syncedProjects}
           onOpen={(id) => go({ name: "project", id })}
-          onCreate={(name, tags) => {
-            const normalizedTags = [...new Set((tags ?? []).map((t) => t.trim()).filter(Boolean))];
-            const np: Project = {
-              id: Date.now(),
-              name,
-              tasks: 0,
-              completed: 0,
-              tags: normalizedTags,
-              demo: true,
-            };
+          onCreate={(name, tags, file) => {
+            const np = { id: Date.now(), name, tasks: 0, completed: 0, tags, demo: !!file } as Project;
             setProjects([np, ...projects]);
-            // ensure new project has tasks in the map
             setTasksByProject((prev) => ({ [np.id]: buildTasksForProject(np.id, np.name), ...prev }));
-            toast.success("Project created");
+            if (file) toast.success(`Project created — file ${file.name} uploaded`);
+            else toast.success("Project created");
           }}
-          onDelete={(id: number) => {
-            setProjects((prev) => prev.filter((p) => p.id !== id));
-            setTasksByProject((prev) => {
-              const copy = { ...prev };
-              delete copy[id];
-              return copy;
-            });
-            toast.success("Project deleted");
-            if (page.name !== 'dashboard') setPage({ name: 'dashboard' });
-          }}
+          onRequestDelete={(p: Project) => promptDeleteProject(p)}
+          onRequestEdit={(p: Project) => promptEditProject(p)}
         />
       )}
       {page.name === "project" && (
@@ -371,34 +595,25 @@ const Index = () => {
           project={syncedProjects.find((p) => p.id === page.id)!}
           tasks={tasksByProject[page.id] ?? []}
           onBack={() => go({ name: "dashboard" })}
-          onLabel={(taskId) => go({ name: "label", id: taskId })}
-          onDelete={(id: number) => {
-            setProjects((prev) => prev.filter((p) => p.id !== id));
-            // remove tasks for that project as well
-            setTasksByProject((prev) => {
-              const copy = { ...prev };
-              delete copy[id];
-              return copy;
-            });
-            toast.success("Project deleted");
-            go({ name: "dashboard" });
-          }}
+          onLabel={(taskId) => go({ name: "label", id: taskId, projectId: page.id })}
+          onRequestDelete={(p: Project) => promptDeleteProject(p)}
+          onRequestEdit={(p: Project) => promptEditProject(p)}
         />
       )}
       {page.name === "label" && tasksLoaded && (
         <Labeling
           taskId={page.id}
-          tasks={allTasks}
+          tasks={tasksByProject[page.projectId] ?? []}
           projects={projects}
           tasksByProject={tasksByProject}
-          onBack={() => go({ name: "dashboard" })}
+          onBack={() => go({ name: "project", id: page.projectId })}
           onSubmit={handleSubmitTask}
-          onGoTo={(id) => go({ name: "label", id })}
+          onGoTo={(id) => go({ name: "label", id, projectId: page.projectId })}
         />
       )}
       {page.name === "annotatedBy" && (
         <AnnotatedBy
-          tasks={allTasks}
+          tasks={tasksByProject[page.projectId] ?? []}
           onBack={() => go({ name: "dashboard" })}
         />
       )}
@@ -610,12 +825,14 @@ const Dashboard = ({
   projects,
   onOpen,
   onCreate,
-  onDelete,
+  onRequestDelete,
+  onRequestEdit,
 }: {
   projects: Project[];
   onOpen: (id: number) => void;
-  onCreate: (name: string, tags: string[]) => void;
-  onDelete: (id: number) => void;
+  onCreate: (name: string, tags: string[], file?: File | null) => void;
+  onRequestDelete: (p: Project) => void;
+  onRequestEdit: (p: Project) => void;
 }) => {
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -881,7 +1098,7 @@ const Dashboard = ({
             <Button
               disabled={!newName.trim()}
               onClick={() => {
-               onCreate(newName.trim(), tags);
+                onCreate(newName.trim(), tags, file);
                 resetModal();
                 setOpen(false);
               }}
@@ -909,50 +1126,64 @@ const Dashboard = ({
           </div>
           <div className="mt-5 space-y-3">
             {projects.map((p) => {
-               const pct = p.tasks
-                 ? Math.round((p.completed / p.tasks) * 100)
-                 : 0;
-               return (
-                 <div
-                   key={p.id}
-                   // make the whole card clickable to open
-                   onClick={() => onOpen(p.id)}
-                   role="button"
-                   tabIndex={0}
-                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(p.id); }}
-                   className="group flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card p-4 transition hover:border-accent/40 hover:shadow-soft cursor-pointer"
-                 >
-                   <div className="flex min-w-0 items-center gap-3">
-                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
-                       <FileText className="h-5 w-5" />
-                     </div>
-                     <div className="min-w-0">
-                       <p className="truncate font-semibold">{p.name}</p>
-                       <p className="text-xs text-muted-foreground">
-                         {p.completed} of {p.tasks} tasks · {pct}%
-                       </p>
-                     </div>
-                   </div>
-                   <div className="hidden w-40 sm:block">
-                     <Progress value={pct} className="h-2" />
-                   </div>
-                  <div className="flex items-center gap-2">
-                    {/* Delete button should not trigger the card click */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Delete project "${p.name}"? This cannot be undone.`)) {
-                          onDelete(p.id);
-                        }
-                      }}
-                      className="inline-flex items-center rounded-full border border-destructive/30 bg-muted/50 px-3 py-1 text-sm text-destructive"
-                    >
-                      Delete
-                    </button>
+              const pct = p.tasks
+                ? Math.round((p.completed / p.tasks) * 100)
+                : 0;
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => onOpen(p.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpen(p.id); }}
+                  className="group flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card p-4 transition hover:border-accent/40 hover:shadow-soft cursor-pointer"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.completed} of {p.tasks} tasks · {pct}%
+                      </p>
+                    </div>
                   </div>
-                 </div>
-               );
-             })}
+                  <div className="hidden w-40 sm:block">
+                    <Progress value={pct} className="h-2" />
+                  </div>
+
+                  {/* ── Replaced Delete button with chevron dropdown ── */}
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="inline-flex items-center justify-center h-8 w-8 rounded-full border border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition"
+                          aria-label="Project actions"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-36">
+                        <DropdownMenuItem
+                          className="cursor-pointer gap-2"
+                          onClick={() => onRequestEdit(p)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+                          onClick={() => onRequestDelete(p)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
 
@@ -1003,13 +1234,15 @@ const ProjectView = ({
   tasks,
   onBack,
   onLabel,
-  onDelete,
+  onRequestDelete,
+  onRequestEdit,
 }: {
   project: Project;
   tasks: Task[];
   onBack: () => void;
   onLabel: (id: number) => void;
-  onDelete: (id: number) => void;
+  onRequestDelete: (p: Project) => void;
+  onRequestEdit: (p: Project) => void;
 }) => (
   <main className="mx-auto max-w-7xl px-6 py-10">
     <button
@@ -1018,6 +1251,7 @@ const ProjectView = ({
     >
       <ArrowLeft className="h-4 w-4" /> Back to projects
     </button>
+
     <div className="mt-3 flex items-end justify-between">
       <div>
         <h1 className="font-display text-3xl font-extrabold">{project.name}</h1>
@@ -1025,26 +1259,23 @@ const ProjectView = ({
           {project.completed} of {project.tasks} tasks completed
         </p>
       </div>
+
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          className="rounded-full text-destructive hover:bg-destructive/10"
-          onClick={() => {
-            if (
-              // simple confirmation before deleting
-              confirm(
-                `Delete project "${project.name}"? This cannot be undone.`
-              )
-            ) {
-              onDelete(project.id);
-            }
-          }}
-        >
-          Delete
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" className="rounded-full px-3 py-2">
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onClick={() => onRequestEdit(project)}>Edit</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive" onClick={() => onRequestDelete(project)}>Delete</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
+
     <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
       <div className="overflow-auto">
         <table className="w-full text-sm">
@@ -1059,13 +1290,8 @@ const ProjectView = ({
           </thead>
           <tbody>
             {tasks.map((r) => (
-              <tr
-                key={r.id}
-                className="border-t border-border/60 transition hover:bg-muted/40"
-              >
-                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
-                  #{r.id}
-                </td>
+              <tr key={r.id} className="border-t border-border/60 transition hover:bg-muted/40">
+                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{r.id}</td>
                 <td className="px-6 py-4">
                   <Badge
                     variant="outline"
@@ -1081,21 +1307,34 @@ const ProjectView = ({
                 <td className="px-6 py-4 text-muted-foreground">{r.user}</td>
                 <td className="px-6 py-4">{r.text}</td>
                 <td className="px-6 py-4 text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={r.completed}
-                    onClick={() => onLabel(r.id)}
-                    className="text-accent hover:bg-accent-soft hover:text-accent disabled:opacity-40"
-                  >
-                    {r.completed ? (
-                      "Done"
-                    ) : (
-                      <>
-                        Label <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                      </>
-                    )}
-                  </Button>
+                  {r.completed ? (
+                    <div className="flex items-center justify-end gap-3">
+                      <span className="text-sm text-muted-foreground">Done</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLabel(r.id);
+                        }}
+                        className="text-accent hover:bg-accent-soft hover:text-accent"
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onLabel(r.id);
+                      }}
+                      className="text-accent hover:bg-accent-soft hover:text-accent"
+                    >
+                      Label <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -1128,7 +1367,6 @@ const Labeling = ({
   ) => Promise<void> | void;
   onGoTo: (id: number) => void;
 }) => {
-  // Find which project this task belongs to → isolate tags + sidebar list
   const currentProjectId = useMemo(() => {
     const entry = Object.entries(tasksByProject).find(([_, list]) =>
       list.some((t) => t.id === taskId)
@@ -1151,7 +1389,7 @@ const Labeling = ({
   useEffect(() => {
     setTranscript(current?.transcript ?? current?.text ?? "");
     setSelectedTags(current?.tags ?? []);
-  }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [taskId]);
 
   const toggleTag = (tag: string) =>
     setSelectedTags((prev) =>
@@ -1183,7 +1421,6 @@ const Labeling = ({
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr_300px]">
-        {/* Sidebar — task list */}
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
             Tasks
@@ -1217,7 +1454,6 @@ const Labeling = ({
           </div>
         </Card>
 
-        {/* Center — labeling form */}
         <Card className="border-border/60 p-6 shadow-soft">
           <div className="relative h-24 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/70">
             <svg
@@ -1293,7 +1529,6 @@ const Labeling = ({
           </div>
         </Card>
 
-        {/* Right — region details */}
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
             Region details
