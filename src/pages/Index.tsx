@@ -251,9 +251,11 @@ const Index = () => {
       return;
     }
     const projectId = Number(projectEntry[0]);
+    const project = projects.find((p) => p.id === projectId);
+    const isDemoProject = project?.demo === true;
 
-    // ── Dev user: save to localStorage and update that project's tasks ──
-    if (isDevUser(authUser)) {
+    // ── Dev user OR demo project: save to localStorage / in-memory only ──
+    if (isDevUser(authUser) || isDemoProject) {
       saveDevProgress(submittedId, transcript, tags, true);
       const updatedMap = { ...tasksByProject };
       updatedMap[projectId] = updatedMap[projectId].map((t) =>
@@ -262,14 +264,14 @@ const Index = () => {
           : t
       );
       setTasksByProject(updatedMap);
-      const flat = Object.values(updatedMap).flat();
-      const next = flat.find((t) => !t.completed);
+      // Only look for next task within the SAME project
+      const next = updatedMap[projectId].find((t) => !t.completed);
       if (next) {
         toast.success("Submitted");
         setPage({ name: "label", id: next.id });
       } else {
         toast.success("All tasks completed! 🎉");
-        setPage({ name: "annotatedBy", projectId: 0 });
+        setPage({ name: "annotatedBy", projectId });
       }
       return;
     }
@@ -297,14 +299,13 @@ const Index = () => {
         : t
     );
     setTasksByProject(updatedMap);
-    const flat = Object.values(updatedMap).flat();
-    const next = flat.find((t) => !t.completed);
+    const next = updatedMap[projectId].find((t) => !t.completed);
     if (next) {
       toast.success("Submitted");
       setPage({ name: "label", id: next.id });
     } else {
       toast.success("All tasks completed");
-      setPage({ name: "annotatedBy", projectId: 0 });
+      setPage({ name: "annotatedBy", projectId });
     }
   };
 
