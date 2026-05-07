@@ -339,8 +339,16 @@ const Index = () => {
         <Dashboard
           projects={syncedProjects}
           onOpen={(id) => go({ name: "project", id })}
-          onCreate={(name) => {
-            const np = { id: Date.now(), name, tasks: 0, completed: 0 };
+          onCreate={(name, tags) => {
+            const normalizedTags = [...new Set((tags ?? []).map((t) => t.trim()).filter(Boolean))];
+            const np: Project = {
+              id: Date.now(),
+              name,
+              tasks: 0,
+              completed: 0,
+              tags: normalizedTags,
+              demo: true,
+            };
             setProjects([np, ...projects]);
             // ensure new project has tasks in the map
             setTasksByProject((prev) => ({ [np.id]: buildTasksForProject(np.id, np.name), ...prev }));
@@ -381,6 +389,8 @@ const Index = () => {
         <Labeling
           taskId={page.id}
           tasks={allTasks}
+          projects={projects}
+          tasksByProject={tasksByProject}
           onBack={() => go({ name: "dashboard" })}
           onSubmit={handleSubmitTask}
           onGoTo={(id) => go({ name: "label", id })}
