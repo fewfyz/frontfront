@@ -101,8 +101,24 @@ const Index = () => {
   const [authReady, setAuthReady] = useState(false);
   const [page, setPage] = useState<Page>({ name: "dashboard" });
   const [projects, setProjects] = useState<Project[]>(initialProjects);
-  const [tasks, setTasks] = useState<Task[]>(buildInitialTasks());
+
+  // build per-project demo tasks (unique ids per project)
+  const buildTasksForProject = (projectId: number, name?: string): Task[] =>
+    Array.from({ length: 12 }, (_, i) => ({
+      id: projectId * 100000 + 15904 + i,
+      completed: false,
+      user: "",
+      text: `${name ?? "ตัวอย่างข้อความ"} ${i + 1}`,
+    }));
+
+  const [tasksByProject, setTasksByProject] = useState<Record<number, Task[]>>(
+    () => Object.fromEntries(
+      initialProjects.map((p) => [p.id, buildTasksForProject(p.id, p.name)])
+    )
+  );
   const [tasksLoaded, setTasksLoaded] = useState(false);
+
+  const allTasks = useMemo(() => Object.values(tasksByProject).flat(), [tasksByProject]);
 
   // Auth bootstrap
   useEffect(() => {
@@ -120,36 +136,37 @@ const Index = () => {
   // Load progress
   useEffect(() => {
     if (!authUser) {
-      setTasks(buildInitialTasks());
+      // reset demo tasks per project when signed out
+      setTasksByProject(
+        Object.fromEntries(
+          initialProjects.map((p) => [p.id, buildTasksForProject(p.id, p.name)])
+        )
+      );
       setTasksLoaded(false);
       return;
     }
 
-    // ── Dev user: load from localStorage ──
+    // Dev user: merge localStorage progress into every project's tasks
     if (isDevUser(authUser)) {
       const saved = loadDevProgress();
-      const base = buildInitialTasks();
-      const merged = base.map((t) => {
-        const r = saved[t.id];
-        return r
-          ? {
-              ...t,
-              completed: r.completed,
-              user: authUser.email ?? "",
-              transcript: r.transcript,
-              tags: r.tags,
-            }
-          : t;
-      });
-      setTasks(merged);
+      const mergedMap: Record<number, Task[]> = {};
+      for (const [pid, base] of Object.entries(tasksByProject)) {
+        mergedMap[Number(pid)] = base.map((t) => {
+          const r = saved[t.id];
+          return r
+            ? { ...t, completed: r.completed, user: authUser.email ?? "", transcript: r.transcript, tags: r.tags }
+            : t;
+        });
+      }
+      setTasksByProject(mergedMap);
       setTasksLoaded(true);
-      if (merged.every((t) => t.completed)) {
+      if (Object.values(mergedMap).flat().every((t) => t.completed)) {
         setPage({ name: "annotatedBy", projectId: 0 });
       }
       return;
     }
 
-    // ── Real user: load from Supabase ──
+    // Real user: load progress from Supabase and merge into per-project tasks
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
@@ -162,23 +179,25 @@ const Index = () => {
         setTasksLoaded(true);
         return;
       }
-      const base = buildInitialTasks();
       const byId = new Map(data?.map((r) => [r.task_id, r]) ?? []);
-      const merged = base.map((t) => {
-        const r = byId.get(t.id);
-        return r
-          ? {
-              ...t,
-              completed: r.completed,
-              user: r.completed ? authUser.email ?? "" : "",
-              transcript: r.transcript ?? undefined,
-              tags: r.tags ?? [],
-            }
-          : t;
-      });
-      setTasks(merged);
+      const mergedMap: Record<number, Task[]> = {};
+      for (const [pid, base] of Object.entries(tasksByProject)) {
+        mergedMap[Number(pid)] = base.map((t) => {
+          const r = byId.get(t.id);
+          return r
+            ? {
+                ...t,
+                completed: r.completed,
+                user: r.completed ? authUser.email ?? "" : "",
+                transcript: r.transcript ?? undefined,
+                tags: r.tags ?? [],
+              }
+            : t;
+        });
+      }
+      setTasksByProject(mergedMap);
       setTasksLoaded(true);
-      if (merged.every((t) => t.completed)) {
+      if (Object.values(mergedMap).flat().every((t) => t.completed)) {
         setPage({ name: "annotatedBy", projectId: 0 });
       }
     })();
@@ -187,18 +206,16 @@ const Index = () => {
     };
   }, [authUser]);
 
-  const syncedProjects = useMemo(
-    () =>
-      projects.map((p) =>
-        p.id === 1
-          ? {
-              ...p,
-              tasks: tasks.length,
-              completed: tasks.filter((t) => t.completed).length,
-            }
-          : p
-      ),
-    [projects, tasks]
+  const syncedProjects = useMemo(() =>
+    projects.map((p) => {
+      const pTasks = tasksByProject[p.id] ?? [];
+      return {
+        ...p,
+        tasks: pTasks.length,
+        completed: pTasks.filter((t) => t.completed).length,
+      };
+    }),
+    [projects, tasksByProject]
   );
 
   const go = (p: Page) => setPage(p);
@@ -216,16 +233,28 @@ const Index = () => {
   ) => {
     if (!authUser) return;
 
-    // ── Dev user: save to localStorage ──
+    // Find which project this task belongs to
+    const projectEntry = Object.entries(tasksByProject).find(([_, list]) =>
+      list.some((t) => t.id === submittedId)
+    );
+    if (!projectEntry) {
+      toast.error("Task not found");
+      return;
+    }
+    const projectId = Number(projectEntry[0]);
+
+    // ── Dev user: save to localStorage and update that project's tasks ──
     if (isDevUser(authUser)) {
       saveDevProgress(submittedId, transcript, tags, true);
-      const updated = tasks.map((t) =>
+      const updatedMap = { ...tasksByProject };
+      updatedMap[projectId] = updatedMap[projectId].map((t) =>
         t.id === submittedId
           ? { ...t, completed: true, user: authUser.email ?? "", transcript, tags }
           : t
       );
-      setTasks(updated);
-      const next = updated.find((t) => !t.completed);
+      setTasksByProject(updatedMap);
+      const flat = Object.values(updatedMap).flat();
+      const next = flat.find((t) => !t.completed);
       if (next) {
         toast.success("Submitted");
         setPage({ name: "label", id: next.id });
@@ -236,7 +265,7 @@ const Index = () => {
       return;
     }
 
-    // ── Real user: save to Supabase ──
+    // ── Real user: save to Supabase and update local state ──
     const { error } = await supabase.from("task_progress").upsert(
       {
         user_id: authUser.id,
@@ -252,13 +281,15 @@ const Index = () => {
       toast.error("Could not save progress");
       return;
     }
-    const updated = tasks.map((t) =>
+    const updatedMap = { ...tasksByProject };
+    updatedMap[projectId] = updatedMap[projectId].map((t) =>
       t.id === submittedId
         ? { ...t, completed: true, user: authUser.email ?? "", transcript, tags }
         : t
     );
-    setTasks(updated);
-    const next = updated.find((t) => !t.completed);
+    setTasksByProject(updatedMap);
+    const flat = Object.values(updatedMap).flat();
+    const next = flat.find((t) => !t.completed);
     if (next) {
       toast.success("Submitted");
       setPage({ name: "label", id: next.id });
@@ -301,22 +332,45 @@ const Index = () => {
           onCreate={(name) => {
             const np = { id: Date.now(), name, tasks: 0, completed: 0 };
             setProjects([np, ...projects]);
+            // ensure new project has tasks in the map
+            setTasksByProject((prev) => ({ [np.id]: buildTasksForProject(np.id, np.name), ...prev }));
             toast.success("Project created");
+          }}
+          onDelete={(id: number) => {
+            setProjects((prev) => prev.filter((p) => p.id !== id));
+            setTasksByProject((prev) => {
+              const copy = { ...prev };
+              delete copy[id];
+              return copy;
+            });
+            toast.success("Project deleted");
+            if (page.name !== 'dashboard') setPage({ name: 'dashboard' });
           }}
         />
       )}
       {page.name === "project" && (
         <ProjectView
           project={syncedProjects.find((p) => p.id === page.id)!}
-          tasks={tasks}
+          tasks={tasksByProject[page.id] ?? []}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId) => go({ name: "label", id: taskId })}
+          onDelete={(id: number) => {
+            setProjects((prev) => prev.filter((p) => p.id !== id));
+            // remove tasks for that project as well
+            setTasksByProject((prev) => {
+              const copy = { ...prev };
+              delete copy[id];
+              return copy;
+            });
+            toast.success("Project deleted");
+            go({ name: "dashboard" });
+          }}
         />
       )}
       {page.name === "label" && tasksLoaded && (
         <Labeling
           taskId={page.id}
-          tasks={tasks}
+          tasks={allTasks}
           onBack={() => go({ name: "dashboard" })}
           onSubmit={handleSubmitTask}
           onGoTo={(id) => go({ name: "label", id })}
@@ -324,7 +378,7 @@ const Index = () => {
       )}
       {page.name === "annotatedBy" && (
         <AnnotatedBy
-          tasks={tasks}
+          tasks={allTasks}
           onBack={() => go({ name: "dashboard" })}
         />
       )}
@@ -536,10 +590,12 @@ const Dashboard = ({
   projects,
   onOpen,
   onCreate,
+  onDelete,
 }: {
   projects: Project[];
   onOpen: (id: number) => void;
   onCreate: (name: string) => void;
+  onDelete: (id: number) => void;
 }) => {
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -664,39 +720,50 @@ const Dashboard = ({
           </div>
           <div className="mt-5 space-y-3">
             {projects.map((p) => {
-              const pct = p.tasks
-                ? Math.round((p.completed / p.tasks) * 100)
-                : 0;
-              return (
-                <div
-                  key={p.id}
-                  className="group flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card p-4 transition hover:border-accent/40 hover:shadow-soft"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
-                      <FileText className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.completed} of {p.tasks} tasks · {pct}%
-                      </p>
-                    </div>
+               const pct = p.tasks
+                 ? Math.round((p.completed / p.tasks) * 100)
+                 : 0;
+               return (
+                 <div
+                   key={p.id}
+                   // make the whole card clickable to open
+                   onClick={() => onOpen(p.id)}
+                   role="button"
+                   tabIndex={0}
+                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(p.id); }}
+                   className="group flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card p-4 transition hover:border-accent/40 hover:shadow-soft cursor-pointer"
+                 >
+                   <div className="flex min-w-0 items-center gap-3">
+                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+                       <FileText className="h-5 w-5" />
+                     </div>
+                     <div className="min-w-0">
+                       <p className="truncate font-semibold">{p.name}</p>
+                       <p className="text-xs text-muted-foreground">
+                         {p.completed} of {p.tasks} tasks · {pct}%
+                       </p>
+                     </div>
+                   </div>
+                   <div className="hidden w-40 sm:block">
+                     <Progress value={pct} className="h-2" />
+                   </div>
+                  <div className="flex items-center gap-2">
+                    {/* Delete button should not trigger the card click */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete project "${p.name}"? This cannot be undone.`)) {
+                          onDelete(p.id);
+                        }
+                      }}
+                      className="inline-flex items-center rounded-full border border-destructive/30 bg-muted/50 px-3 py-1 text-sm text-destructive"
+                    >
+                      Delete
+                    </button>
                   </div>
-                  <div className="hidden w-40 sm:block">
-                    <Progress value={pct} className="h-2" />
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onOpen(p.id)}
-                    className="rounded-full text-accent hover:bg-accent-soft hover:text-accent"
-                  >
-                    Open <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              );
-            })}
+                 </div>
+               );
+             })}
           </div>
         </Card>
 
@@ -747,11 +814,13 @@ const ProjectView = ({
   tasks,
   onBack,
   onLabel,
+  onDelete,
 }: {
   project: Project;
   tasks: Task[];
   onBack: () => void;
   onLabel: (id: number) => void;
+  onDelete: (id: number) => void;
 }) => (
   <main className="mx-auto max-w-7xl px-6 py-10">
     <button
@@ -766,6 +835,25 @@ const ProjectView = ({
         <p className="mt-1 text-sm text-muted-foreground">
           {project.completed} of {project.tasks} tasks completed
         </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-full text-destructive hover:bg-destructive/10"
+          onClick={() => {
+            if (
+              // simple confirmation before deleting
+              confirm(
+                `Delete project "${project.name}"? This cannot be undone.`
+              )
+            ) {
+              onDelete(project.id);
+            }
+          }}
+        >
+          Delete
+        </Button>
       </div>
     </div>
     <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
