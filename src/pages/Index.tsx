@@ -580,7 +580,10 @@ const Index = () => {
           projects={syncedProjects}
           onOpen={(id) => go({ name: "project", id })}
           onCreate={(name, tags, file) => {
-            const np = { id: Date.now(), name, tasks: 0, completed: 0, tags, demo: !!file } as Project;
+            // Use a smaller project id (seconds timestamp) to avoid exceeding
+            // Number.MAX_SAFE_INTEGER when building task IDs.
+            const newId = Math.floor(Date.now() / 1000);
+            const np = { id: newId, name, tasks: 0, completed: 0, tags, demo: !!file } as Project;
             setProjects([np, ...projects]);
             setTasksByProject((prev) => ({ [np.id]: buildTasksForProject(np.id, np.name), ...prev }));
             if (file) toast.success(`Project created — file ${file.name} uploaded`);
