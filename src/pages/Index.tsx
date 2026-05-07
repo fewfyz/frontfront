@@ -1110,12 +1110,16 @@ const ProjectView = ({
 const Labeling = ({
   taskId,
   tasks,
+  projects,
+  tasksByProject,
   onBack,
   onSubmit,
   onGoTo,
 }: {
   taskId: number;
   tasks: Task[];
+  projects: Project[];
+  tasksByProject: Record<number, Task[]>;
   onBack: () => void;
   onSubmit: (
     id: number,
@@ -1124,18 +1128,29 @@ const Labeling = ({
   ) => Promise<void> | void;
   onGoTo: (id: number) => void;
 }) => {
-  const current = tasks.find((t) => t.id === taskId);
-  const currentIndex = tasks.findIndex((t) => t.id === taskId);
+  // Find which project this task belongs to → isolate tags + sidebar list
+  const currentProjectId = useMemo(() => {
+    const entry = Object.entries(tasksByProject).find(([_, list]) =>
+      list.some((t) => t.id === taskId)
+    );
+    return entry ? Number(entry[0]) : null;
+  }, [taskId, tasksByProject]);
+  const projectTasks = currentProjectId != null ? (tasksByProject[currentProjectId] ?? []) : tasks;
+  const currentProject = projects.find((p) => p.id === currentProjectId);
+  const current = projectTasks.find((t) => t.id === taskId);
+  const currentIndex = projectTasks.findIndex((t) => t.id === taskId);
   const sidebarStart = Math.max(0, currentIndex - 2);
-  const sidebar = tasks.slice(sidebarStart, sidebarStart + 6);
-  const TAG_OPTIONS = ["Multiple speakers", "Inaudible", "Background noise"];
+  const sidebar = projectTasks.slice(sidebarStart, sidebarStart + 6);
+  const TAG_OPTIONS = currentProject?.tags && currentProject.tags.length > 0
+    ? currentProject.tags
+    : ["Multiple speakers", "Inaudible", "Background noise"];
   const [transcript, setTranscript] = useState(current?.transcript ?? current?.text ?? "");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>(current?.tags ?? []);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setTranscript(current?.transcript ?? current?.text ?? "");
-    setSelectedTags([]);
+    setSelectedTags(current?.tags ?? []);
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleTag = (tag: string) =>
@@ -1261,7 +1276,7 @@ const Labeling = ({
               className="rounded-full"
               disabled={busy || currentIndex === 0}
               onClick={() => {
-                const prev = tasks[currentIndex - 1];
+                const prev = projectTasks[currentIndex - 1];
                 if (prev) onGoTo(prev.id);
               }}
             >
