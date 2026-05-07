@@ -41,7 +41,14 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-type Project = { id: number; name: string; tasks: number; completed: number };
+type Project = {
+  id: number;
+  name: string;
+  tasks: number;
+  completed: number;
+  tags?: string[];
+  demo?: boolean;
+};
 type Task = {
   id: number;
   completed: boolean;
@@ -57,9 +64,9 @@ type Page =
   | { name: "annotatedBy"; projectId: number };
 
 const initialProjects: Project[] = [
-  { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254 },
-  { id: 2, name: "Speech QA – Batch 03", tasks: 1800, completed: 0 },
-  { id: 3, name: "Voice Intent Tagging", tasks: 420, completed: 120 },
+  { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
+  { id: 2, name: "Speech QA – Batch 03", tasks: 1800, completed: 0, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
+  { id: 3, name: "Voice Intent Tagging", tasks: 420, completed: 120, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
 ];
 
 const buildInitialTasks = (): Task[] =>
@@ -244,9 +251,11 @@ const Index = () => {
       return;
     }
     const projectId = Number(projectEntry[0]);
+    const project = projects.find((p) => p.id === projectId);
+    const isDemoProject = project?.demo === true;
 
-    // ── Dev user: save to localStorage and update that project's tasks ──
-    if (isDevUser(authUser)) {
+    // ── Dev user OR demo project: save to localStorage / in-memory only ──
+    if (isDevUser(authUser) || isDemoProject) {
       saveDevProgress(submittedId, transcript, tags, true);
       const updatedMap = { ...tasksByProject };
       updatedMap[projectId] = updatedMap[projectId].map((t) =>
@@ -255,14 +264,14 @@ const Index = () => {
           : t
       );
       setTasksByProject(updatedMap);
-      const flat = Object.values(updatedMap).flat();
-      const next = flat.find((t) => !t.completed);
+      // Only look for next task within the SAME project
+      const next = updatedMap[projectId].find((t) => !t.completed);
       if (next) {
         toast.success("Submitted");
         setPage({ name: "label", id: next.id });
       } else {
         toast.success("All tasks completed! 🎉");
-        setPage({ name: "annotatedBy", projectId: 0 });
+        setPage({ name: "annotatedBy", projectId });
       }
       return;
     }
@@ -290,14 +299,13 @@ const Index = () => {
         : t
     );
     setTasksByProject(updatedMap);
-    const flat = Object.values(updatedMap).flat();
-    const next = flat.find((t) => !t.completed);
+    const next = updatedMap[projectId].find((t) => !t.completed);
     if (next) {
       toast.success("Submitted");
       setPage({ name: "label", id: next.id });
     } else {
       toast.success("All tasks completed");
-      setPage({ name: "annotatedBy", projectId: 0 });
+      setPage({ name: "annotatedBy", projectId });
     }
   };
 
@@ -331,8 +339,16 @@ const Index = () => {
         <Dashboard
           projects={syncedProjects}
           onOpen={(id) => go({ name: "project", id })}
-          onCreate={(name) => {
-            const np = { id: Date.now(), name, tasks: 0, completed: 0 };
+          onCreate={(name, tags) => {
+            const normalizedTags = [...new Set((tags ?? []).map((t) => t.trim()).filter(Boolean))];
+            const np: Project = {
+              id: Date.now(),
+              name,
+              tasks: 0,
+              completed: 0,
+              tags: normalizedTags,
+              demo: true,
+            };
             setProjects([np, ...projects]);
             // ensure new project has tasks in the map
             setTasksByProject((prev) => ({ [np.id]: buildTasksForProject(np.id, np.name), ...prev }));
@@ -373,6 +389,8 @@ const Index = () => {
         <Labeling
           taskId={page.id}
           tasks={allTasks}
+          projects={projects}
+          tasksByProject={tasksByProject}
           onBack={() => go({ name: "dashboard" })}
           onSubmit={handleSubmitTask}
           onGoTo={(id) => go({ name: "label", id })}
@@ -596,7 +614,7 @@ const Dashboard = ({
 }: {
   projects: Project[];
   onOpen: (id: number) => void;
-  onCreate: (name: string) => void;
+  onCreate: (name: string, tags: string[]) => void;
   onDelete: (id: number) => void;
 }) => {
   const [open, setOpen] = useState(false);
@@ -863,7 +881,7 @@ const Dashboard = ({
             <Button
               disabled={!newName.trim()}
               onClick={() => {
-                onCreate(newName.trim());
+               onCreate(newName.trim(), tags);
                 resetModal();
                 setOpen(false);
               }}
@@ -1092,12 +1110,16 @@ const ProjectView = ({
 const Labeling = ({
   taskId,
   tasks,
+  projects,
+  tasksByProject,
   onBack,
   onSubmit,
   onGoTo,
 }: {
   taskId: number;
   tasks: Task[];
+  projects: Project[];
+  tasksByProject: Record<number, Task[]>;
   onBack: () => void;
   onSubmit: (
     id: number,
@@ -1106,18 +1128,29 @@ const Labeling = ({
   ) => Promise<void> | void;
   onGoTo: (id: number) => void;
 }) => {
-  const current = tasks.find((t) => t.id === taskId);
-  const currentIndex = tasks.findIndex((t) => t.id === taskId);
+  // Find which project this task belongs to → isolate tags + sidebar list
+  const currentProjectId = useMemo(() => {
+    const entry = Object.entries(tasksByProject).find(([_, list]) =>
+      list.some((t) => t.id === taskId)
+    );
+    return entry ? Number(entry[0]) : null;
+  }, [taskId, tasksByProject]);
+  const projectTasks = currentProjectId != null ? (tasksByProject[currentProjectId] ?? []) : tasks;
+  const currentProject = projects.find((p) => p.id === currentProjectId);
+  const current = projectTasks.find((t) => t.id === taskId);
+  const currentIndex = projectTasks.findIndex((t) => t.id === taskId);
   const sidebarStart = Math.max(0, currentIndex - 2);
-  const sidebar = tasks.slice(sidebarStart, sidebarStart + 6);
-  const TAG_OPTIONS = ["Multiple speakers", "Inaudible", "Background noise"];
+  const sidebar = projectTasks.slice(sidebarStart, sidebarStart + 6);
+  const TAG_OPTIONS = currentProject?.tags && currentProject.tags.length > 0
+    ? currentProject.tags
+    : ["Multiple speakers", "Inaudible", "Background noise"];
   const [transcript, setTranscript] = useState(current?.transcript ?? current?.text ?? "");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>(current?.tags ?? []);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setTranscript(current?.transcript ?? current?.text ?? "");
-    setSelectedTags([]);
+    setSelectedTags(current?.tags ?? []);
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleTag = (tag: string) =>
@@ -1243,7 +1276,7 @@ const Labeling = ({
               className="rounded-full"
               disabled={busy || currentIndex === 0}
               onClick={() => {
-                const prev = tasks[currentIndex - 1];
+                const prev = projectTasks[currentIndex - 1];
                 if (prev) onGoTo(prev.id);
               }}
             >
