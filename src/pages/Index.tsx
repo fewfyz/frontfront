@@ -41,6 +41,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { Layers, List, Rows3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
