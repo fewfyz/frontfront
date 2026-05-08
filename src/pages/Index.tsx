@@ -1322,19 +1322,20 @@ const ProjectView = ({
   tasks,
   onBack,
   onLabel,
-  onBatchReview,
+  onStartReview,
   onRequestDelete,
   onRequestEdit,
 }: {
   project: Project;
   tasks: Task[];
   onBack: () => void;
-  onLabel: (id: number, mode?: "single" | "batch") => void;
-  onBatchReview: () => void;
+  onLabel: (id: number, mode?: ReviewMode) => void;
+  onStartReview: (mode: ReviewMode) => void;
   onRequestDelete: (p: Project) => void;
   onRequestEdit: (p: Project) => void;
 }) => {
   const firstReviewTask = tasks.find((t) => !t.completed) ?? tasks[0];
+  const [selectedMode, setSelectedMode] = useState<ReviewMode>("single");
 
   return (
   <main className="mx-auto max-w-7xl px-6 py-10">
@@ -1370,35 +1371,31 @@ const ProjectView = ({
     </div>
 
     <Card className="mt-8 border-border/60 p-4 shadow-soft">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1 sm:max-w-sm">
           <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Review mode
           </p>
           <h2 className="text-lg font-semibold">
             Choose how you want to review this project.
           </h2>
-        </div>
-        <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
+          <p className="text-sm text-muted-foreground">
+            Pick a workflow that fits the size of this batch.
+          </p>
           <Button
-            variant="default"
             size="sm"
             disabled={!firstReviewTask}
-            onClick={() => firstReviewTask && onLabel(firstReviewTask.id, "single")}
-            className="rounded-l-full"
+            onClick={() => onStartReview(selectedMode)}
+            className="mt-3 rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
           >
-            Review one item
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={tasks.length === 0}
-            onClick={onBatchReview}
-            className="rounded-r-full"
-          >
-            Review 10 items
+            Start review <ArrowRight className="ml-1 h-4 w-4" />
           </Button>
         </div>
+        <ReviewModeSelector
+          value={selectedMode}
+          onChange={setSelectedMode}
+          disabled={tasks.length === 0}
+        />
       </div>
     </Card>
 
