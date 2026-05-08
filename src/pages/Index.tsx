@@ -677,9 +677,10 @@ const Index = () => {
           tasks={tasksByProject[page.id] ?? []}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId, mode = "single") => go({ name: "label", id: taskId, projectId: page.id, mode })}
-          onBatchReview={() => {
-            const firstTask = (tasksByProject[page.id] ?? [])[0];
-            if (firstTask) go({ name: "label", id: firstTask.id, projectId: page.id, mode: "batch" });
+          onStartReview={(mode) => {
+            const list = tasksByProject[page.id] ?? [];
+            const target = mode === "single" ? (list.find((t) => !t.completed) ?? list[0]) : list[0];
+            if (target) go({ name: "label", id: target.id, projectId: page.id, mode });
             else toast.info("This project has no review items yet");
           }}
           onRequestDelete={(p: Project) => promptDeleteProject(p)}
