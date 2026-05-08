@@ -41,9 +41,16 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { Layers, List, Rows3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
+
+type ProjectMode = "select" | "segment" | "compare";
+
+const PROJECT_MODES: { value: ProjectMode; label: string }[] = [
+  { value: "select", label: "Select Mode" },
+  { value: "segment", label: "Segment Mode" },
+  { value: "compare", label: "Compare Mode" },
+];
 
 type Project = {
   id: number;
@@ -52,6 +59,7 @@ type Project = {
   completed: number;
   tags?: string[];
   demo?: boolean;
+  mode?: ProjectMode;
 };
 type Task = {
   id: number;
@@ -64,68 +72,8 @@ type Task = {
 type Page =
   | { name: "dashboard" }
   | { name: "project"; id: number }
-  | { name: "label"; id: number; projectId: number; mode: ReviewMode }
+  | { name: "label"; id: number; projectId: number; mode: "single" | "batch" }
   | { name: "annotatedBy"; projectId: number };
-
-/* ── Review mode ── */
-export type ReviewMode = "single" | "batch" | "all";
-
-const REVIEW_MODES: {
-  value: ReviewMode;
-  label: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-}[] = [
-  { value: "single", label: "Review one item", description: "Focus on a single task at a time.", icon: List },
-  { value: "batch", label: "Review 10 items", description: "Work through tasks in pages of 10.", icon: Rows3 },
-  { value: "all", label: "Review all items", description: "See every task in the project at once.", icon: Layers },
-];
-
-const ReviewModeSelector = ({
-  value,
-  onChange,
-  disabled,
-  className,
-}: {
-  value: ReviewMode;
-  onChange: (mode: ReviewMode) => void;
-  disabled?: boolean;
-  className?: string;
-}) => (
-  <div className={`flex w-full max-w-sm flex-col gap-3 ${className ?? ""}`}>
-    {REVIEW_MODES.map((m) => {
-      const active = value === m.value;
-      const Icon = m.icon;
-      return (
-        <button
-          key={m.value}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(m.value)}
-          aria-pressed={active}
-          className={`flex h-16 w-full items-center gap-3 rounded-xl border px-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-            active
-              ? "border-accent bg-accent-soft text-accent shadow-soft"
-              : "border-border bg-card text-foreground hover:border-accent/40 hover:bg-muted/40"
-          }`}
-        >
-          <span
-            className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
-              active ? "bg-gradient-accent text-accent-foreground" : "bg-muted text-muted-foreground"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold">{m.label}</span>
-            <span className="block truncate text-xs text-muted-foreground">{m.description}</span>
-          </span>
-          {active && <Check className="h-4 w-4 shrink-0 text-accent" />}
-        </button>
-      );
-    })}
-  </div>
-);
 
 const initialProjects: Project[] = [
   { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
@@ -362,6 +310,7 @@ const Index = () => {
       const pTasks = tasksByProject[p.id] ?? [];
       return {
         ...p,
+        mode: p.mode ?? "select",
         tasks: pTasks.length,
         completed: pTasks.filter((t) => t.completed).length,
       };
@@ -657,11 +606,11 @@ const Index = () => {
         <Dashboard
           projects={syncedProjects}
           onOpen={(id) => go({ name: "project", id })}
-          onCreate={(name, tags, file) => {
+          onCreate={(name, tags, file, mode) => {
             // Use a smaller project id (seconds timestamp) to avoid exceeding
             // Number.MAX_SAFE_INTEGER when building task IDs.
             const newId = Math.floor(Date.now() / 1000);
-            const np = { id: newId, name, tasks: 0, completed: 0, tags, demo: !!file } as Project;
+            const np = { id: newId, name, tasks: 0, completed: 0, tags, demo: !!file, mode: mode ?? "select" } as Project;
             setProjects([np, ...projects]);
             setTasksByProject((prev) => ({ [np.id]: buildTasksForProject(np.id, np.name), ...prev }));
             if (file) toast.success(`Project created — file ${file.name} uploaded`);
@@ -677,10 +626,9 @@ const Index = () => {
           tasks={tasksByProject[page.id] ?? []}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId, mode = "single") => go({ name: "label", id: taskId, projectId: page.id, mode })}
-          onStartReview={(mode) => {
-            const list = tasksByProject[page.id] ?? [];
-            const target = mode === "single" ? (list.find((t) => !t.completed) ?? list[0]) : list[0];
-            if (target) go({ name: "label", id: target.id, projectId: page.id, mode });
+          onBatchReview={() => {
+            const firstTask = (tasksByProject[page.id] ?? [])[0];
+            if (firstTask) go({ name: "label", id: firstTask.id, projectId: page.id, mode: "batch" });
             else toast.info("This project has no review items yet");
           }}
           onRequestDelete={(p: Project) => promptDeleteProject(p)}
@@ -919,7 +867,7 @@ const Dashboard = ({
 }: {
   projects: Project[];
   onOpen: (id: number) => void;
-  onCreate: (name: string, tags: string[], file?: File | null) => void;
+  onCreate: (name: string, tags: string[], file?: File | null, mode?: ProjectMode) => void;
   onRequestDelete: (p: Project) => void;
   onRequestEdit: (p: Project) => void;
 }) => {
@@ -933,6 +881,8 @@ const Dashboard = ({
   const [dragOver, setDragOver] = useState(false);
   const MAX_TAGS = 6;
   const tagsFull = tags.length >= MAX_TAGS;
+
+  const [newMode, setNewMode] = useState<ProjectMode>("select");
 
   const acceptExt = [".csv", ".xlsx", ".txt", ".json"];
   const isAccepted = (f: File) =>
@@ -975,6 +925,7 @@ const Dashboard = ({
     setTagInput("");
     setFile(null);
     setDragOver(false);
+    setNewMode("select");
   };
 
   const totals = useMemo(() => {
@@ -1019,8 +970,8 @@ const Dashboard = ({
           if (!o) resetModal();
         }}
       >
-        <DialogContent className="rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-lg">
-          <DialogHeader className="space-y-1 px-7 pb-2 pt-6 text-left">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-lg">
+          <DialogHeader className="shrink-0 space-y-1 px-5 pb-2 pt-5 text-left sm:px-7 sm:pt-6">
             <DialogTitle className="font-display text-xl font-semibold tracking-tight">
               Create new project
             </DialogTitle>
@@ -1029,7 +980,7 @@ const Dashboard = ({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 px-7 py-5">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:space-y-5 sm:px-7 sm:py-5">
             <div className="space-y-1.5">
               <Label htmlFor="proj-name" className="text-sm font-medium">
                 Project name
@@ -1054,7 +1005,7 @@ const Dashboard = ({
                 placeholder="What's this project about?"
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
-                className="min-h-20 rounded-lg"
+                className="min-h-16 rounded-lg sm:min-h-20"
               />
             </div>
 
@@ -1071,7 +1022,7 @@ const Dashboard = ({
                   setDragOver(false);
                   handleFiles(e.dataTransfer.files);
                 }}
-                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-7 text-center transition ${
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-5 text-center transition sm:py-7 ${
                   dragOver
                     ? "border-accent bg-accent-soft"
                     : "border-border bg-muted/30 hover:bg-muted/50"
@@ -1168,15 +1119,41 @@ const Dashboard = ({
                   variant="outline"
                   onClick={addTag}
                   disabled={tagsFull || !tagInput.trim()}
-                  className="h-9 rounded-lg"
+                  className="h-9 shrink-0 rounded-lg"
                 >
                   Add
                 </Button>
               </div>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Project mode</Label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {PROJECT_MODES.map((mode) => {
+                  const active = newMode === mode.value;
+
+                  return (
+                    <Button
+                      key={mode.value}
+                      type="button"
+                      variant="outline"
+                      aria-pressed={active}
+                      onClick={() => setNewMode(mode.value)}
+                      className={`h-10 rounded-lg border text-sm font-medium transition ${
+                        active
+                          ? "border-accent bg-accent-soft text-accent shadow-glow"
+                          : "border-border/70 bg-background hover:border-accent/50 hover:bg-muted/50"
+                      }`}
+                    >
+                      {mode.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
-          <DialogFooter className="gap-2 rounded-b-2xl border-t border-border/60 bg-muted/30 px-7 py-4">
+          <DialogFooter className="shrink-0 gap-2 rounded-b-2xl border-t border-border/60 bg-muted/30 px-5 py-3 sm:px-7 sm:py-4">
             <Button
               variant="outline"
               onClick={() => setOpen(false)}
@@ -1187,7 +1164,7 @@ const Dashboard = ({
             <Button
               disabled={!newName.trim()}
               onClick={() => {
-                onCreate(newName.trim(), tags, file);
+                onCreate(newName.trim(), tags, file, newMode);
                 resetModal();
                 setOpen(false);
               }}
@@ -1323,20 +1300,19 @@ const ProjectView = ({
   tasks,
   onBack,
   onLabel,
-  onStartReview,
+  onBatchReview,
   onRequestDelete,
   onRequestEdit,
 }: {
   project: Project;
   tasks: Task[];
   onBack: () => void;
-  onLabel: (id: number, mode?: ReviewMode) => void;
-  onStartReview: (mode: ReviewMode) => void;
+  onLabel: (id: number, mode?: "single" | "batch") => void;
+  onBatchReview: () => void;
   onRequestDelete: (p: Project) => void;
   onRequestEdit: (p: Project) => void;
 }) => {
   const firstReviewTask = tasks.find((t) => !t.completed) ?? tasks[0];
-  const [selectedMode, setSelectedMode] = useState<ReviewMode>("single");
 
   return (
   <main className="mx-auto max-w-7xl px-6 py-10">
@@ -1372,31 +1348,35 @@ const ProjectView = ({
     </div>
 
     <Card className="mt-8 border-border/60 p-4 shadow-soft">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1 sm:max-w-sm">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
           <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Review mode
           </p>
           <h2 className="text-lg font-semibold">
             Choose how you want to review this project.
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Pick a workflow that fits the size of this batch.
-          </p>
+        </div>
+        <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
           <Button
+            variant="default"
             size="sm"
             disabled={!firstReviewTask}
-            onClick={() => onStartReview(selectedMode)}
-            className="mt-3 rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+            onClick={() => firstReviewTask && onLabel(firstReviewTask.id, "single")}
+            className="rounded-l-full"
           >
-            Start review <ArrowRight className="ml-1 h-4 w-4" />
+            Review one item
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={tasks.length === 0}
+            onClick={onBatchReview}
+            className="rounded-r-full"
+          >
+            Review 10 items
           </Button>
         </div>
-        <ReviewModeSelector
-          value={selectedMode}
-          onChange={setSelectedMode}
-          disabled={tasks.length === 0}
-        />
       </div>
     </Card>
 
@@ -1484,7 +1464,7 @@ const Labeling = ({
 }: {
   taskId: number;
   projectId: number;
-  mode: ReviewMode;
+  mode: "single" | "batch";
   tasks: Task[];
   projects: Project[];
   tasksByProject: Record<number, Task[]>;
@@ -1510,7 +1490,6 @@ const Labeling = ({
     />
   ) : (
     <LabelingBatch
-      mode={mode}
       projectId={projectId}
       tasks={tasks}
       projects={projects}
@@ -1737,7 +1716,6 @@ const LabelingSingle = ({
 
 /* ────── Labeling Batch (10 items) ────── */
 const LabelingBatch = ({
-  mode = "batch",
   projectId,
   tasks,
   projects,
@@ -1745,7 +1723,6 @@ const LabelingBatch = ({
   onBack,
   onSubmit,
 }: {
-  mode?: ReviewMode;
   projectId: number;
   tasks: Task[];
   projects: Project[];
@@ -1758,6 +1735,7 @@ const LabelingBatch = ({
     options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => Promise<void> | void;
 }) => {
+  const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(0);
   const [batchDrafts, setBatchDrafts] = useState<
     Record<number, { transcript: string; selectedTags: string[] }>
@@ -1772,7 +1750,6 @@ const LabelingBatch = ({
   const allItems = useMemo(() => projectTasks, [projectTasks]);
 
   const totalItems = allItems.length;
-  const PAGE_SIZE = mode === "all" ? Math.max(1, totalItems) : 10;
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   const completedCount = projectTasks.filter((t) => t.completed).length;
 
@@ -2023,7 +2000,7 @@ const LabelingBatch = ({
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    await savePageChanges();
+                    await savePageChanges(false);
                     setCurrentPage(Math.max(0, safeCurrentPage - 1));
                   } finally {
                     setBusy(false);
@@ -2041,7 +2018,7 @@ const LabelingBatch = ({
                   onClick={async () => {
                     setBusy(true);
                     try {
-                      await savePageChanges();
+                      await savePageChanges(false);
                       setCurrentPage(safeCurrentPage + 1);
                     } finally {
                       setBusy(false);
