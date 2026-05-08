@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useRef, useState } from "react";import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -64,7 +63,7 @@ type Task = {
 type Page =
   | { name: "dashboard" }
   | { name: "project"; id: number }
-  | { name: "label"; id: number; projectId: number }
+  | { name: "label"; id: number; projectId: number; mode: "single" | "batch" }
   | { name: "annotatedBy"; projectId: number };
 
 const initialProjects: Project[] = [
@@ -114,14 +113,18 @@ const Index = () => {
   const [authReady, setAuthReady] = useState(false);
   const [page, setPage] = useState<Page>({ name: "dashboard" });
   const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const nextTaskId = useRef(15904);
 
-  const buildTasksForProject = (projectId: number, name?: string): Task[] =>
-    Array.from({ length: 12 }, (_, i) => ({
-      id: projectId * 100000 + 15904 + i,
+  const buildTasksForProject = (projectId: number, name?: string): Task[] => {
+    const start = nextTaskId.current;
+    nextTaskId.current += 12;
+    return Array.from({ length: 12 }, (_, i) => ({
+      id: start + i,
       completed: false,
       user: "",
       text: `${name ?? "ตัวอย่างข้อความ"} ${i + 1}`,
     }));
+  };
 
   const [tasksByProject, setTasksByProject] = useState<Record<number, Task[]>>(
     () => Object.fromEntries(
@@ -317,10 +320,10 @@ const Index = () => {
     submittedId: number,
     transcript: string,
     tags: string[],
-    options?: { preservePage?: boolean; silent?: boolean }
+    options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => {
     if (!authUser) return;
-    const { preservePage = false, silent = false } = options ?? {};
+    const { preservePage = false, silent = false, completed } = options ?? {};
 
     const projectEntry = Object.entries(tasksByProject).find(([_, list]) =>
       list.some((t) => t.id === submittedId)
@@ -342,20 +345,27 @@ const Index = () => {
       if (!updatedMap) return;
       const next = updatedMap[projectId].find((t) => !t.completed);
       if (!silent) {
-        toast.success(next ? "Submitted" : "Saved");
+        if (shouldComplete) {
+          toast.success(next ? "Submitted" : "Saved");
+        } else {
+          toast.warning("Saved as pending. Add tags to complete this item.");
+        }
       }
-      if (!preservePage && next) {
-        setPage({ name: "label", id: next.id, projectId });
+      if (!preservePage && shouldComplete && next) {
+        setPage({ name: "label", id: next.id, projectId, mode: "single" });
       }
     };
 
+    const projectTask = projectEntry ? projectEntry[1].find((t) => t.id === submittedId) : undefined;
+    const shouldComplete = completed ?? projectTask?.completed ?? false;
+
     if (isDevUser(authUser) || isDemoProject) {
-      saveDevProgress(submittedId, transcript, tags, true);
+      saveDevProgress(submittedId, transcript, tags, shouldComplete);
       applySavedState((prev) => {
         const updated = { ...prev };
         updated[projectId] = updated[projectId].map((t) =>
           t.id === submittedId
-            ? { ...t, completed: true, user: authUser.email ?? "", transcript, tags }
+            ? { ...t, completed: shouldComplete, user: authUser.email ?? "", transcript, tags }
             : t
         );
         return updated;
@@ -369,7 +379,7 @@ const Index = () => {
         task_id: submittedId,
         transcript,
         tags,
-        completed: true,
+        completed: shouldComplete,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,task_id" }
@@ -382,7 +392,7 @@ const Index = () => {
       const updated = { ...prev };
       updated[projectId] = updated[projectId].map((t) =>
         t.id === submittedId
-          ? { ...t, completed: true, user: authUser.email ?? "", transcript, tags }
+          ? { ...t, completed: shouldComplete, user: authUser.email ?? "", transcript, tags }
           : t
       );
       return updated;
@@ -605,7 +615,12 @@ const Index = () => {
           project={syncedProjects.find((p) => p.id === page.id)!}
           tasks={tasksByProject[page.id] ?? []}
           onBack={() => go({ name: "dashboard" })}
-          onLabel={(taskId) => go({ name: "label", id: taskId, projectId: page.id })}
+          onLabel={(taskId, mode = "single") => go({ name: "label", id: taskId, projectId: page.id, mode })}
+          onBatchReview={() => {
+            const firstTask = (tasksByProject[page.id] ?? [])[0];
+            if (firstTask) go({ name: "label", id: firstTask.id, projectId: page.id, mode: "batch" });
+            else toast.info("This project has no review items yet");
+          }}
           onRequestDelete={(p: Project) => promptDeleteProject(p)}
           onRequestEdit={(p: Project) => promptEditProject(p)}
         />
@@ -619,7 +634,8 @@ const Index = () => {
           tasksByProject={tasksByProject}
           onBack={() => go({ name: "project", id: page.projectId })}
           onSubmit={handleSubmitTask}
-          onGoTo={(id) => go({ name: "label", id, projectId: page.projectId })}
+          onGoTo={(id) => go({ name: "label", id, projectId: page.projectId, mode: page.mode })}
+          mode={page.mode}
         />
       )}
       {page.name === "annotatedBy" && (
@@ -1245,16 +1261,21 @@ const ProjectView = ({
   tasks,
   onBack,
   onLabel,
+  onBatchReview,
   onRequestDelete,
   onRequestEdit,
 }: {
   project: Project;
   tasks: Task[];
   onBack: () => void;
-  onLabel: (id: number) => void;
+  onLabel: (id: number, mode?: "single" | "batch") => void;
+  onBatchReview: () => void;
   onRequestDelete: (p: Project) => void;
   onRequestEdit: (p: Project) => void;
-}) => (
+}) => {
+  const firstReviewTask = tasks.find((t) => !t.completed) ?? tasks[0];
+
+  return (
   <main className="mx-auto max-w-7xl px-6 py-10">
     <button
       onClick={onBack}
@@ -1287,7 +1308,40 @@ const ProjectView = ({
       </div>
     </div>
 
-    <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
+    <Card className="mt-8 border-border/60 p-4 shadow-soft">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Review mode
+          </p>
+          <h2 className="text-lg font-semibold">
+            Choose how you want to review this project.
+          </h2>
+        </div>
+        <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
+          <Button
+            variant="default"
+            size="sm"
+            disabled={!firstReviewTask}
+            onClick={() => firstReviewTask && onLabel(firstReviewTask.id, "single")}
+            className="rounded-l-full"
+          >
+            Review one item
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={tasks.length === 0}
+            onClick={onBatchReview}
+            className="rounded-r-full"
+          >
+            Review 10 items
+          </Button>
+        </div>
+      </div>
+    </Card>
+
+    <Card className="mt-6 overflow-hidden border-border/60 p-0 shadow-soft">
       <div className="overflow-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
@@ -1354,12 +1408,14 @@ const ProjectView = ({
       </div>
     </Card>
   </main>
-);
+  );
+};
 
 /* ---------------- Labeling ---------------- */
 const Labeling = ({
   taskId,
   projectId,
+  mode,
   tasks,
   projects,
   tasksByProject,
@@ -1369,6 +1425,7 @@ const Labeling = ({
 }: {
   taskId: number;
   projectId: number;
+  mode: "single" | "batch";
   tasks: Task[];
   projects: Project[];
   tasksByProject: Record<number, Task[]>;
@@ -1377,13 +1434,11 @@ const Labeling = ({
     id: number,
     transcript: string,
     tags: string[],
-    options?: { preservePage?: boolean; silent?: boolean }
+    options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => Promise<void> | void;
   onGoTo: (id: number) => void;
-}) => {
-  const [reviewMode, setReviewMode] = useState<"single" | "batch">("single");
-
-  return reviewMode === "single" ? (
+}) =>
+  mode === "single" ? (
     <LabelingSingle
       taskId={taskId}
       projectId={projectId}
@@ -1393,7 +1448,6 @@ const Labeling = ({
       onBack={onBack}
       onSubmit={onSubmit}
       onGoTo={onGoTo}
-      onModeChange={setReviewMode}
     />
   ) : (
     <LabelingBatch
@@ -1403,10 +1457,8 @@ const Labeling = ({
       tasksByProject={tasksByProject}
       onBack={onBack}
       onSubmit={onSubmit}
-      onModeChange={setReviewMode}
     />
   );
-};
 
 /* ────── Labeling Single Item ────── */
 const LabelingSingle = ({
@@ -1418,7 +1470,6 @@ const LabelingSingle = ({
   onBack,
   onSubmit,
   onGoTo,
-  onModeChange,
 }: {
   taskId: number;
   projectId: number;
@@ -1430,10 +1481,9 @@ const LabelingSingle = ({
     id: number,
     transcript: string,
     tags: string[],
-    options?: { preservePage?: boolean; silent?: boolean }
+    options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => Promise<void> | void;
   onGoTo: (id: number) => void;
-  onModeChange: (mode: "single" | "batch") => void;
 }) => {
   const currentProject = projects.find((p) => p.id === projectId);
   const projectTasks = tasksByProject[projectId] ?? tasks;
@@ -1461,7 +1511,9 @@ const LabelingSingle = ({
   const handleSubmit = async () => {
     setBusy(true);
     try {
-      await onSubmit(taskId, transcript, selectedTags);
+      await onSubmit(taskId, transcript, selectedTags, {
+        completed: selectedTags.length > 0,
+      });
     } finally {
       setBusy(false);
     }
@@ -1469,49 +1521,19 @@ const LabelingSingle = ({
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
-      <Card className="border-border/60 p-4 shadow-soft">
-        <div className="flex items-center justify-between gap-3">
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back
-          </button>
-          <p className="text-sm text-muted-foreground">
-            Projects / Labeling · <span className="font-mono text-foreground">#{taskId}</span>
-          </p>
-        </div>
-        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Review mode
-            </p>
-            <h1 className="text-lg font-semibold">
-              Choose how you want to review this project.
-            </h1>
-          </div>
-          <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => onModeChange("single")}
-              className="rounded-l-full"
-            >
-              Review one item
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onModeChange("batch")}
-              className="rounded-r-full"
-            >
-              Review 10 items
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to project
+        </button>
+        <p className="text-sm text-muted-foreground">
+          Projects / Labeling · <span className="font-mono text-foreground">#{taskId}</span>
+        </p>
+      </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr_300px]">
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr_300px]">
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
             Tasks
@@ -1661,7 +1683,6 @@ const LabelingBatch = ({
   tasksByProject,
   onBack,
   onSubmit,
-  onModeChange,
 }: {
   projectId: number;
   tasks: Task[];
@@ -1672,9 +1693,8 @@ const LabelingBatch = ({
     id: number,
     transcript: string,
     tags: string[],
-    options?: { preservePage?: boolean; silent?: boolean }
+    options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => Promise<void> | void;
-  onModeChange: (mode: "single" | "batch") => void;
 }) => {
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(0);
@@ -1705,23 +1725,15 @@ const LabelingBatch = ({
     ? currentProject.tags
     : ["Multiple speakers", "Inaudible", "Background noise"];
 
+  const getDraftForTask = (task: Task) =>
+    batchDrafts[task.id] ?? {
+      transcript: task.transcript ?? task.text ?? "",
+      selectedTags: task.tags ?? [],
+    };
+
   const getItemDraft = (taskId: number) => {
     const task = projectTasks.find((t) => t.id === taskId);
-    if (!batchDrafts[taskId]) {
-      setBatchDrafts((prev) => ({
-        ...prev,
-        [taskId]: {
-          transcript: task?.transcript ?? task?.text ?? "",
-          selectedTags: task?.tags ?? [],
-        },
-      }));
-    }
-    return (
-      batchDrafts[taskId] || {
-        transcript: task?.transcript ?? task?.text ?? "",
-        selectedTags: task?.tags ?? [],
-      }
-    );
+    return task ? getDraftForTask(task) : { transcript: "", selectedTags: [] };
   };
 
   const updateItemTranscript = (taskId: number, transcript: string) => {
@@ -1746,34 +1758,47 @@ const LabelingBatch = ({
     });
   };
 
+  const savePageChanges = async () => {
+    await Promise.all(
+      pageItems.map((task) => {
+        const draft = getItemDraft(task.id);
+        return onSubmit(task.id, draft.transcript, draft.selectedTags, {
+          preservePage: true,
+          silent: true,
+        });
+      })
+    );
+  };
+
+  const saveAllChangesOnSubmit = async () => {
+    const results = await Promise.all(
+      allItems.map((task) => {
+        const draft = getItemDraft(task.id);
+        const shouldMarkDone = draft.selectedTags.length > 0;
+        return Promise.resolve(
+          onSubmit(task.id, draft.transcript, draft.selectedTags, {
+            preservePage: true,
+            silent: true,
+            completed: shouldMarkDone,
+          })
+        ).then(() => shouldMarkDone);
+      })
+    );
+
+    const missingCount = results.filter((done) => !done).length;
+    return { missingCount, totalCount: results.length };
+  };
+
   const handleBatchSubmit = async () => {
     setBusy(true);
     try {
-      // Save only items on current page without navigating away
-      await Promise.all(
-        pageItems.map((task) => {
-          const draft = getItemDraft(task.id);
-          return onSubmit(task.id, draft.transcript, draft.selectedTags, {
-            preservePage: true,
-            silent: true,
-          });
-        })
-      );
-
-      // After submission, clear drafts for submitted items
-      setBatchDrafts((prev) => {
-        const updated = { ...prev };
-        pageItems.forEach((task) => {
-          delete updated[task.id];
-        });
-        return updated;
-      });
-
-      toast.success("Changes saved");
-
-      // Auto-advance to next page if available, otherwise stay on current page
-      if (safeCurrentPage + 1 < totalPages) {
-        setCurrentPage(safeCurrentPage + 1);
+      const { missingCount } = await saveAllChangesOnSubmit();
+      if (missingCount > 0) {
+        toast.warning(
+          "Some items are still missing tags. They were saved but not marked as Done."
+        );
+      } else {
+        toast.success("All reviewed items saved and marked as Done.");
       }
     } finally {
       setBusy(false);
@@ -1782,49 +1807,19 @@ const LabelingBatch = ({
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
-      <Card className="border-border/60 p-4 shadow-soft">
-        <div className="flex items-center justify-between gap-3">
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back
-          </button>
-          <p className="text-sm text-muted-foreground">
-            Page {safeCurrentPage + 1} of {totalPages} · {completedCount} completed
-          </p>
-        </div>
-        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Review mode
-            </p>
-            <h1 className="text-lg font-semibold">
-              Choose how you want to review this project.
-            </h1>
-          </div>
-          <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onModeChange("single")}
-              className="rounded-l-full"
-            >
-              Review one item
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => onModeChange("batch")}
-              className="rounded-r-full"
-            >
-              Review 10 items
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to project
+        </button>
+        <p className="text-sm text-muted-foreground">
+          Page {safeCurrentPage + 1} of {totalPages} · {completedCount} completed
+        </p>
+      </div>
 
-      <div className="mt-6">
+      <div>
         {totalItems === 0 ? (
           <Card className="border-border/60 p-12 shadow-soft text-center">
             <h3 className="font-display text-lg font-bold">No items yet</h3>
@@ -1958,34 +1953,50 @@ const LabelingBatch = ({
             </div>
 
             {/* Pagination and Submit Actions */}
-            <div className="mt-6 flex items-center justify-between">
-              <div className="flex gap-2">
+            <div className="mt-6 flex items-center">
+              <Button
+                variant="outline"
+                className="rounded-full"
+                disabled={busy || safeCurrentPage === 0}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await savePageChanges(false);
+                    setCurrentPage(Math.max(0, safeCurrentPage - 1));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <ArrowLeft className="mr-1 h-4 w-4" /> Previous page
+              </Button>
+
+              {safeCurrentPage + 1 < totalPages ? (
                 <Button
                   variant="outline"
-                  className="rounded-full"
-                  disabled={busy || safeCurrentPage === 0}
-                  onClick={() => setCurrentPage(Math.max(0, safeCurrentPage - 1))}
-                >
-                  <ArrowLeft className="mr-1 h-4 w-4" /> Previous page
-                </Button>
-                <Button
-                  variant="outline"
-                  className="rounded-full"
-                  disabled={busy || safeCurrentPage + 1 >= totalPages}
-                  onClick={() => setCurrentPage(safeCurrentPage + 1)}
+                  className="rounded-full ml-auto"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await savePageChanges(false);
+                      setCurrentPage(safeCurrentPage + 1);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
                 >
                   Next page <ArrowRight className="ml-1 h-4 w-4" />
                 </Button>
-              </div>
-
-              <Button
-                onClick={handleBatchSubmit}
-                disabled={busy || pageItems.length === 0}
-                className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
-              >
-                {busy ? "Saving…" : "Submit reviewed items"}{" "}
-                <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
+              ) : (
+                <Button
+                  className="rounded-full ml-auto bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+                  onClick={handleBatchSubmit}
+                  disabled={busy || pageItems.length === 0}
+                >
+                  {busy ? "Saving…" : "Submit"} <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              )}
             </div>
           </>
         )}
