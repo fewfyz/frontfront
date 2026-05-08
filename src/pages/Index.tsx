@@ -1962,7 +1962,7 @@ const LabelingBatch = ({
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    await savePageChanges(false);
+                    await savePageChanges();
                     setCurrentPage(Math.max(0, safeCurrentPage - 1));
                   } finally {
                     setBusy(false);
@@ -1980,7 +1980,7 @@ const LabelingBatch = ({
                   onClick={async () => {
                     setBusy(true);
                     try {
-                      await savePageChanges(false);
+                      await savePageChanges();
                       setCurrentPage(safeCurrentPage + 1);
                     } finally {
                       setBusy(false);
