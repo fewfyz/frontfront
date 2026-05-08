@@ -64,8 +64,68 @@ type Task = {
 type Page =
   | { name: "dashboard" }
   | { name: "project"; id: number }
-  | { name: "label"; id: number; projectId: number; mode: "single" | "batch" }
+  | { name: "label"; id: number; projectId: number; mode: ReviewMode }
   | { name: "annotatedBy"; projectId: number };
+
+/* ── Review mode ── */
+export type ReviewMode = "single" | "batch" | "all";
+
+const REVIEW_MODES: {
+  value: ReviewMode;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { value: "single", label: "Review one item", description: "Focus on a single task at a time.", icon: List },
+  { value: "batch", label: "Review 10 items", description: "Work through tasks in pages of 10.", icon: Rows3 },
+  { value: "all", label: "Review all items", description: "See every task in the project at once.", icon: Layers },
+];
+
+const ReviewModeSelector = ({
+  value,
+  onChange,
+  disabled,
+  className,
+}: {
+  value: ReviewMode;
+  onChange: (mode: ReviewMode) => void;
+  disabled?: boolean;
+  className?: string;
+}) => (
+  <div className={`flex w-full max-w-sm flex-col gap-3 ${className ?? ""}`}>
+    {REVIEW_MODES.map((m) => {
+      const active = value === m.value;
+      const Icon = m.icon;
+      return (
+        <button
+          key={m.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(m.value)}
+          aria-pressed={active}
+          className={`flex h-16 w-full items-center gap-3 rounded-xl border px-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+            active
+              ? "border-accent bg-accent-soft text-accent shadow-soft"
+              : "border-border bg-card text-foreground hover:border-accent/40 hover:bg-muted/40"
+          }`}
+        >
+          <span
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
+              active ? "bg-gradient-accent text-accent-foreground" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">{m.label}</span>
+            <span className="block truncate text-xs text-muted-foreground">{m.description}</span>
+          </span>
+          {active && <Check className="h-4 w-4 shrink-0 text-accent" />}
+        </button>
+      );
+    })}
+  </div>
+);
 
 const initialProjects: Project[] = [
   { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
