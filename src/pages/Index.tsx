@@ -41,6 +41,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { Layers, List, Rows3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -63,8 +64,68 @@ type Task = {
 type Page =
   | { name: "dashboard" }
   | { name: "project"; id: number }
-  | { name: "label"; id: number; projectId: number; mode: "single" | "batch" }
+  | { name: "label"; id: number; projectId: number; mode: ReviewMode }
   | { name: "annotatedBy"; projectId: number };
+
+/* ── Review mode ── */
+export type ReviewMode = "single" | "batch" | "all";
+
+const REVIEW_MODES: {
+  value: ReviewMode;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { value: "single", label: "Review one item", description: "Focus on a single task at a time.", icon: List },
+  { value: "batch", label: "Review 10 items", description: "Work through tasks in pages of 10.", icon: Rows3 },
+  { value: "all", label: "Review all items", description: "See every task in the project at once.", icon: Layers },
+];
+
+const ReviewModeSelector = ({
+  value,
+  onChange,
+  disabled,
+  className,
+}: {
+  value: ReviewMode;
+  onChange: (mode: ReviewMode) => void;
+  disabled?: boolean;
+  className?: string;
+}) => (
+  <div className={`flex w-full max-w-sm flex-col gap-3 ${className ?? ""}`}>
+    {REVIEW_MODES.map((m) => {
+      const active = value === m.value;
+      const Icon = m.icon;
+      return (
+        <button
+          key={m.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(m.value)}
+          aria-pressed={active}
+          className={`flex h-16 w-full items-center gap-3 rounded-xl border px-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+            active
+              ? "border-accent bg-accent-soft text-accent shadow-soft"
+              : "border-border bg-card text-foreground hover:border-accent/40 hover:bg-muted/40"
+          }`}
+        >
+          <span
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
+              active ? "bg-gradient-accent text-accent-foreground" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">{m.label}</span>
+            <span className="block truncate text-xs text-muted-foreground">{m.description}</span>
+          </span>
+          {active && <Check className="h-4 w-4 shrink-0 text-accent" />}
+        </button>
+      );
+    })}
+  </div>
+);
 
 const initialProjects: Project[] = [
   { id: 1, name: "Customer Support Audio", tasks: 1800, completed: 254, tags: ["Multiple speakers", "Inaudible", "Background noise"] },
@@ -616,9 +677,10 @@ const Index = () => {
           tasks={tasksByProject[page.id] ?? []}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId, mode = "single") => go({ name: "label", id: taskId, projectId: page.id, mode })}
-          onBatchReview={() => {
-            const firstTask = (tasksByProject[page.id] ?? [])[0];
-            if (firstTask) go({ name: "label", id: firstTask.id, projectId: page.id, mode: "batch" });
+          onStartReview={(mode) => {
+            const list = tasksByProject[page.id] ?? [];
+            const target = mode === "single" ? (list.find((t) => !t.completed) ?? list[0]) : list[0];
+            if (target) go({ name: "label", id: target.id, projectId: page.id, mode });
             else toast.info("This project has no review items yet");
           }}
           onRequestDelete={(p: Project) => promptDeleteProject(p)}
@@ -1261,19 +1323,20 @@ const ProjectView = ({
   tasks,
   onBack,
   onLabel,
-  onBatchReview,
+  onStartReview,
   onRequestDelete,
   onRequestEdit,
 }: {
   project: Project;
   tasks: Task[];
   onBack: () => void;
-  onLabel: (id: number, mode?: "single" | "batch") => void;
-  onBatchReview: () => void;
+  onLabel: (id: number, mode?: ReviewMode) => void;
+  onStartReview: (mode: ReviewMode) => void;
   onRequestDelete: (p: Project) => void;
   onRequestEdit: (p: Project) => void;
 }) => {
   const firstReviewTask = tasks.find((t) => !t.completed) ?? tasks[0];
+  const [selectedMode, setSelectedMode] = useState<ReviewMode>("single");
 
   return (
   <main className="mx-auto max-w-7xl px-6 py-10">
@@ -1309,35 +1372,31 @@ const ProjectView = ({
     </div>
 
     <Card className="mt-8 border-border/60 p-4 shadow-soft">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1 sm:max-w-sm">
           <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Review mode
           </p>
           <h2 className="text-lg font-semibold">
             Choose how you want to review this project.
           </h2>
-        </div>
-        <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
+          <p className="text-sm text-muted-foreground">
+            Pick a workflow that fits the size of this batch.
+          </p>
           <Button
-            variant="default"
             size="sm"
             disabled={!firstReviewTask}
-            onClick={() => firstReviewTask && onLabel(firstReviewTask.id, "single")}
-            className="rounded-l-full"
+            onClick={() => onStartReview(selectedMode)}
+            className="mt-3 rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
           >
-            Review one item
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={tasks.length === 0}
-            onClick={onBatchReview}
-            className="rounded-r-full"
-          >
-            Review 10 items
+            Start review <ArrowRight className="ml-1 h-4 w-4" />
           </Button>
         </div>
+        <ReviewModeSelector
+          value={selectedMode}
+          onChange={setSelectedMode}
+          disabled={tasks.length === 0}
+        />
       </div>
     </Card>
 
@@ -1425,7 +1484,7 @@ const Labeling = ({
 }: {
   taskId: number;
   projectId: number;
-  mode: "single" | "batch";
+  mode: ReviewMode;
   tasks: Task[];
   projects: Project[];
   tasksByProject: Record<number, Task[]>;
@@ -1451,6 +1510,7 @@ const Labeling = ({
     />
   ) : (
     <LabelingBatch
+      mode={mode}
       projectId={projectId}
       tasks={tasks}
       projects={projects}
@@ -1677,6 +1737,7 @@ const LabelingSingle = ({
 
 /* ────── Labeling Batch (10 items) ────── */
 const LabelingBatch = ({
+  mode = "batch",
   projectId,
   tasks,
   projects,
@@ -1684,6 +1745,7 @@ const LabelingBatch = ({
   onBack,
   onSubmit,
 }: {
+  mode?: ReviewMode;
   projectId: number;
   tasks: Task[];
   projects: Project[];
@@ -1696,7 +1758,6 @@ const LabelingBatch = ({
     options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => Promise<void> | void;
 }) => {
-  const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(0);
   const [batchDrafts, setBatchDrafts] = useState<
     Record<number, { transcript: string; selectedTags: string[] }>
@@ -1711,6 +1772,7 @@ const LabelingBatch = ({
   const allItems = useMemo(() => projectTasks, [projectTasks]);
 
   const totalItems = allItems.length;
+  const PAGE_SIZE = mode === "all" ? Math.max(1, totalItems) : 10;
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   const completedCount = projectTasks.filter((t) => t.completed).length;
 
@@ -1961,7 +2023,7 @@ const LabelingBatch = ({
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    await savePageChanges(false);
+                    await savePageChanges();
                     setCurrentPage(Math.max(0, safeCurrentPage - 1));
                   } finally {
                     setBusy(false);
@@ -1979,7 +2041,7 @@ const LabelingBatch = ({
                   onClick={async () => {
                     setBusy(true);
                     try {
-                      await savePageChanges(false);
+                      await savePageChanges();
                       setCurrentPage(safeCurrentPage + 1);
                     } finally {
                       setBusy(false);
