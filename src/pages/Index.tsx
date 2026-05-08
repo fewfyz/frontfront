@@ -1737,6 +1737,7 @@ const LabelingSingle = ({
 
 /* ────── Labeling Batch (10 items) ────── */
 const LabelingBatch = ({
+  mode = "batch",
   projectId,
   tasks,
   projects,
@@ -1744,6 +1745,7 @@ const LabelingBatch = ({
   onBack,
   onSubmit,
 }: {
+  mode?: ReviewMode;
   projectId: number;
   tasks: Task[];
   projects: Project[];
@@ -1756,7 +1758,6 @@ const LabelingBatch = ({
     options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => Promise<void> | void;
 }) => {
-  const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(0);
   const [batchDrafts, setBatchDrafts] = useState<
     Record<number, { transcript: string; selectedTags: string[] }>
@@ -1771,6 +1772,7 @@ const LabelingBatch = ({
   const allItems = useMemo(() => projectTasks, [projectTasks]);
 
   const totalItems = allItems.length;
+  const PAGE_SIZE = mode === "all" ? Math.max(1, totalItems) : 10;
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   const completedCount = projectTasks.filter((t) => t.completed).length;
 
