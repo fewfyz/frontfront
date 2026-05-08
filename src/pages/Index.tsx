@@ -1484,7 +1484,7 @@ const Labeling = ({
 }: {
   taskId: number;
   projectId: number;
-  mode: "single" | "batch";
+  mode: ReviewMode;
   tasks: Task[];
   projects: Project[];
   tasksByProject: Record<number, Task[]>;
@@ -1510,6 +1510,7 @@ const Labeling = ({
     />
   ) : (
     <LabelingBatch
+      mode={mode}
       projectId={projectId}
       tasks={tasks}
       projects={projects}
