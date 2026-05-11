@@ -1,0 +1,988 @@
+// src/pages/annotation/mode-b.tsx
+// โหมด B — Region Annotation + Batch Review
+
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Pause,
+  Play,
+  Plus,
+  Square,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
+import { REGION_COLORS, REGION_SOLID } from "@/types";
+import type { AudioRegion, Project, Task } from "@/types";
+
+// ─────────────────────────────────────────────────────────────
+// WAV encoder
+// ─────────────────────────────────────────────────────────────
+
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const numCh = buffer.numberOfChannels;
+  const sr = buffer.sampleRate;
+  const dataLen = buffer.length * numCh * 2;
+  const ab = new ArrayBuffer(44 + dataLen);
+  const v = new DataView(ab);
+  const ws = (o: number, s: string) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
+  };
+  ws(0, "RIFF"); v.setUint32(4, 36 + dataLen, true); ws(8, "WAVE");
+  ws(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, numCh, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * numCh * 2, true); v.setUint16(32, numCh * 2, true);
+  v.setUint16(34, 16, true); ws(36, "data"); v.setUint32(40, dataLen, true);
+  let off = 44;
+  for (let i = 0; i < buffer.length; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+      v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      off += 2;
+    }
+  }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+function generateFakeAudioBlob(): Promise<Blob> {
+  return new Promise((resolve) => {
+    const sr = 22050;
+    const dur = 30;
+    const buf = new Float32Array(sr * dur);
+    for (let i = 0; i < buf.length; i++) {
+      const t = i / sr;
+      const env = Math.abs(Math.sin(t * 0.5)) * 0.7 + 0.3;
+      buf[i] =
+        (Math.sin(t * 440 * Math.PI * 2) * 0.4 +
+          Math.sin(t * 880 * Math.PI * 2) * 0.2 +
+          (Math.random() - 0.5) * 0.08) *
+        env;
+    }
+    const octx = new OfflineAudioContext(1, sr * dur, sr);
+    const src = octx.createBufferSource();
+    const abuf = octx.createBuffer(1, buf.length, sr);
+    abuf.getChannelData(0).set(buf);
+    src.buffer = abuf;
+    src.connect(octx.destination);
+    src.start();
+    octx.startRendering().then((rendered) => resolve(audioBufferToWav(rendered)));
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Waveform Player
+// ─────────────────────────────────────────────────────────────
+
+interface WaveformPlayerProps {
+  regions: AudioRegion[];
+  activeRegionId: string | null;
+  onRegionClick: (id: string) => void;
+  onRegionUpdate: (id: string, start: number, end: number) => void;
+  onWaveSurferReady: (ws: any) => void;
+}
+
+const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
+  regions,
+  activeRegionId,
+  onRegionClick,
+  onRegionUpdate,
+  onWaveSurferReady,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<any>(null);
+  const regionsPluginRef = useRef<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [wsReady, setWsReady] = useState(false);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    let destroyed = false;
+    (async () => {
+      const WaveSurfer = (await import("wavesurfer.js")).default;
+      const RegionsPlugin = (
+        await import("wavesurfer.js/dist/plugins/regions.esm.js")
+      ).default;
+      if (destroyed || !containerRef.current) return;
+      const regionsPlugin = RegionsPlugin.create();
+      regionsPluginRef.current = regionsPlugin;
+      const ws = WaveSurfer.create({
+        container: containerRef.current,
+        waveColor: "rgba(180,110,40,0.5)",
+        progressColor: "rgba(160,75,15,0.85)",
+        cursorColor: "hsl(var(--accent))",
+        barWidth: 2,
+        barGap: 1,
+        barRadius: 2,
+        height: 96,
+        normalize: true,
+        plugins: [regionsPlugin],
+      });
+      wsRef.current = ws;
+      ws.on("ready", () => {
+        setDuration(ws.getDuration());
+        setWsReady(true);
+        onWaveSurferReady(ws);
+      });
+      ws.on("timeupdate", (t: number) => setCurrentTime(t));
+      ws.on("play", () => setIsPlaying(true));
+      ws.on("pause", () => setIsPlaying(false));
+      ws.on("finish", () => setIsPlaying(false));
+      regionsPlugin.on("region-clicked", (region: any, e: Event) => {
+        e.stopPropagation();
+        onRegionClick(region.id);
+      });
+      regionsPlugin.on("region-updated", (region: any) => {
+        onRegionUpdate(region.id, region.start, region.end);
+      });
+      const blob = await generateFakeAudioBlob();
+      await ws.loadBlob(blob);
+    })();
+    return () => {
+      destroyed = true;
+      wsRef.current?.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!wsReady || !regionsPluginRef.current) return;
+    const plugin = regionsPluginRef.current;
+    plugin.clearRegions();
+    regions.forEach((r) => {
+      plugin.addRegion({
+        id: r.id,
+        start: r.start,
+        end: r.end,
+        color: r.color,
+        drag: true,
+        resize: true,
+      });
+    });
+  }, [regions, wsReady]);
+
+  const fmt = (s: number) =>
+    `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
+
+  const handlePlayRegion = () => {
+    const ws = wsRef.current;
+    if (!ws || !wsReady) return;
+    const plugin = regionsPluginRef.current;
+    if (!plugin || !activeRegionId) {
+      ws.playPause();
+      return;
+    }
+    const allRegions: any[] = plugin.getRegions?.() ?? [];
+    const region = allRegions.find((r: any) => r.id === activeRegionId);
+    if (region) {
+      ws.setTime(region.start);
+      ws.play();
+    } else {
+      ws.playPause();
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div
+        ref={containerRef}
+        className="relative overflow-hidden rounded-xl border border-border/40 bg-gradient-to-br from-[#180e00] to-[#2a1500]"
+        style={{ minHeight: 96 }}
+      />
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-xs text-muted-foreground">
+          {fmt(currentTime)} / {fmt(duration)}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => wsRef.current?.stop()}
+            className="h-8 w-8 rounded-full p-0"
+          >
+            <Square className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => wsRef.current?.playPause()}
+            className="h-8 w-8 rounded-full bg-gradient-accent p-0"
+          >
+            {isPlaying ? (
+              <Pause className="h-3.5 w-3.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handlePlayRegion}
+            className="h-8 rounded-full px-3 text-xs"
+          >
+            Play region
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Props
+// ─────────────────────────────────────────────────────────────
+
+interface ModeBPageProps {
+  taskId: number;
+  projectId: number;
+  mode: "single" | "batch";
+  tasks: Task[];
+  projects: Project[];
+  tasksByProject: Record<number, Task[]>;
+  onBack: () => void;
+  onSubmit: (
+    id: number,
+    transcript: string,
+    tags: string[],
+    options?: {
+      preservePage?: boolean;
+      silent?: boolean;
+      completed?: boolean;
+    }
+  ) => Promise<void> | void;
+  onGoTo: (id: number) => void;
+}
+
+// ─────────────────────────────────────────────────────────────
+// SINGLE MODE — 3-column layout
+// ─────────────────────────────────────────────────────────────
+
+const ModeBSingle: React.FC<ModeBPageProps> = ({
+  taskId,
+  projectId,
+  tasks,
+  projects,
+  tasksByProject,
+  onBack,
+  onSubmit,
+  onGoTo,
+}) => {
+  const projectTasks = tasksByProject[projectId] ?? tasks;
+  const currentProject = projects.find((p) => p.id === projectId);
+  const current = projectTasks.find((t) => t.id === taskId);
+  const currentIndex = projectTasks.findIndex((t) => t.id === taskId);
+  const sidebarStart = Math.max(0, currentIndex - 2);
+  const sidebar = projectTasks.slice(sidebarStart, sidebarStart + 6);
+
+  const TAG_OPTIONS =
+    currentProject?.tags?.length
+      ? currentProject.tags
+      : ["Multiple speakers", "Inaudible", "Background noise"];
+
+  const [transcript, setTranscript] = useState(
+    current?.transcript ?? current?.text ?? ""
+  );
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    current?.tags ?? []
+  );
+  const [busy, setBusy] = useState(false);
+
+  const regionCounter = useRef(2);
+  const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([
+    { id: "r1", start: 1.5, end: 7, label: "Speech 1", color: REGION_COLORS[0] },
+  ]);
+  const [activeRegionId, setActiveRegionId] = useState<string | null>("r1");
+  const wsRef = useRef<any>(null);
+
+  useEffect(() => {
+    setTranscript(current?.transcript ?? current?.text ?? "");
+    setSelectedTags(current?.tags ?? []);
+  }, [taskId]);
+
+  const activeRegion =
+    audioRegions.find((r) => r.id === activeRegionId) ?? audioRegions[0] ?? null;
+
+  const addRegion = () => {
+    const idx = audioRegions.length;
+    const newRegion: AudioRegion = {
+      id: `r${regionCounter.current++}`,
+      start: 10 + idx * 6,
+      end: 15 + idx * 6,
+      label: `Region ${idx + 1}`,
+      color: REGION_COLORS[idx % REGION_COLORS.length],
+    };
+    setAudioRegions((prev) => [...prev, newRegion]);
+    setActiveRegionId(newRegion.id);
+  };
+
+  const removeRegion = (id: string) => {
+    setAudioRegions((prev) => prev.filter((r) => r.id !== id));
+    if (activeRegionId === id) {
+      const remaining = audioRegions.filter((r) => r.id !== id);
+      setActiveRegionId(remaining[0]?.id ?? null);
+    }
+  };
+
+  const toggleTag = (tag: string) =>
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+
+  const handleSubmit = async () => {
+    setBusy(true);
+    try {
+      await onSubmit(taskId, transcript, selectedTags, {
+        completed: selectedTags.length > 0,
+      });
+      toast.success("Saved");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto max-w-7xl px-6 py-10">
+      {/* Top bar */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to project
+        </button>
+
+        <p className="text-sm text-muted-foreground">
+          Projects / Labeling ·{" "}
+          <span className="font-mono text-foreground">#{taskId}</span>
+        </p>
+
+        {/* Review mode toggle */}
+        <div className="flex items-center gap-1 rounded-full border border-border bg-muted p-1">
+          <button className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-sm">
+            Review one item
+          </button>
+          <button
+            onClick={() => {
+              window.location.href = `/annotation/${projectId}?mode=batch`;
+            }}
+            className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Review 10 items
+          </button>
+        </div>
+      </div>
+
+      {/* 3-column grid */}
+      <div className="grid gap-4 lg:grid-cols-[280px_1fr_280px]">
+
+        {/* ── Left: Task sidebar ── */}
+        <Card className="border-border/60 p-5 shadow-soft">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Tasks
+          </h4>
+          <div className="mt-4 space-y-2">
+            {sidebar.map((t) => (
+              <div
+                key={t.id}
+                onClick={() => onGoTo(t.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onGoTo(t.id);
+                }}
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition hover:border-accent/40 ${
+                  t.id === taskId
+                    ? "border-accent/40 bg-accent-soft"
+                    : t.completed
+                    ? "border-border/60 bg-muted/40 opacity-60"
+                    : "border-border/60 bg-card"
+                }`}
+              >
+                <span className="font-mono text-xs text-muted-foreground">
+                  #{t.id}
+                </span>
+                <span className="truncate">{t.text}</span>
+                {t.completed && (
+                  <Badge
+                    variant="outline"
+                    className="ml-auto border-accent/30 bg-accent-soft text-accent"
+                  >
+                    Done
+                  </Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* ── Center: Waveform + Regions + Transcript + Tags ── */}
+        <Card className="border-border/60 p-6 shadow-soft">
+          <WaveformPlayer
+            regions={audioRegions}
+            activeRegionId={activeRegionId}
+            onRegionClick={setActiveRegionId}
+            onRegionUpdate={(id, start, end) =>
+              setAudioRegions((prev) =>
+                prev.map((r) => (r.id === id ? { ...r, start, end } : r))
+              )
+            }
+            onWaveSurferReady={(ws) => {
+              wsRef.current = ws;
+            }}
+          />
+
+          {/* Region tabs */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {audioRegions.map((r, idx) => (
+              <button
+                key={r.id}
+                onClick={() => setActiveRegionId(r.id)}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-all ${
+                  r.id === activeRegionId
+                    ? "border-amber-400/60 bg-amber-50 text-amber-800"
+                    : "border-border bg-muted/50 text-muted-foreground hover:border-accent/40"
+                }`}
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{
+                    background: REGION_SOLID[idx % REGION_SOLID.length],
+                  }}
+                />
+                {r.label}
+                {audioRegions.length > 1 && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeRegion(r.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.stopPropagation();
+                        removeRegion(r.id);
+                      }
+                    }}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-black/10"
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                )}
+              </button>
+            ))}
+            <button
+              onClick={addRegion}
+              className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-accent/40 hover:text-accent"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add
+            </button>
+          </div>
+
+          {/* Active region info row */}
+          {activeRegion && (
+            <div className="mt-3 flex items-center gap-3 rounded-lg bg-muted/40 px-4 py-2 text-sm">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{
+                  background:
+                    REGION_SOLID[
+                      audioRegions.findIndex((r) => r.id === activeRegion.id) %
+                        REGION_SOLID.length
+                    ],
+                }}
+              />
+              <span className="font-medium">{activeRegion.label}</span>
+              <span className="text-muted-foreground">
+                {activeRegion.start.toFixed(2)}s – {activeRegion.end.toFixed(2)}s
+              </span>
+              <span className="ml-auto text-muted-foreground">
+                ({(activeRegion.end - activeRegion.start).toFixed(2)}s)
+              </span>
+            </div>
+          )}
+
+          {/* Transcription */}
+          <h3 className="mt-6 text-lg font-bold">Transcription</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Please correct the transcript if needed.
+          </p>
+          <textarea
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
+            className="mt-3 min-h-24 w-full resize-none rounded-xl border border-border bg-background p-4 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          />
+
+          {/* Tags */}
+          <h4 className="mt-6 text-sm font-semibold">Tag any that apply</h4>
+          <div className="mt-3 space-y-2">
+            {TAG_OPTIONS.map((tag) => {
+              const isSelected = selectedTags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleTag(tag)}
+                  aria-pressed={isSelected}
+                  className={`flex h-12 w-full items-center gap-3 rounded-xl border px-4 text-left text-sm font-medium transition-all ${
+                    isSelected
+                      ? "border-primary bg-primary/10 text-primary shadow-sm"
+                      : "border-border bg-white text-foreground hover:border-primary/40 hover:bg-muted/50"
+                  }`}
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-muted-foreground/40 bg-white"
+                    }`}
+                  >
+                    {isSelected ? <Check className="h-3 w-3" /> : null}
+                  </span>
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Navigation */}
+          <div className="mt-6 flex justify-between gap-2">
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={busy || currentIndex === 0}
+              onClick={() => {
+                const prev = projectTasks[currentIndex - 1];
+                if (prev) onGoTo(prev.id);
+              }}
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" /> Previous
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={busy}
+              className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+            >
+              {busy ? "Saving…" : "Submit"}{" "}
+              <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </Card>
+
+        {/* ── Right: Region Details ── */}
+        <Card className="border-border/60 p-5 shadow-soft">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Region Details
+          </h4>
+
+          {activeRegion ? (
+            <>
+              <div className="mt-4 flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{
+                    background:
+                      REGION_SOLID[
+                        audioRegions.findIndex(
+                          (r) => r.id === activeRegion.id
+                        ) % REGION_SOLID.length
+                      ],
+                  }}
+                />
+                <span className="font-semibold">{activeRegion.label}</span>
+              </div>
+
+              <div className="mt-4 space-y-0">
+                {[
+                  { label: "Start", value: `${activeRegion.start.toFixed(3)}s` },
+                  { label: "End", value: `${activeRegion.end.toFixed(3)}s` },
+                  {
+                    label: "Duration",
+                    value: `${(activeRegion.end - activeRegion.start).toFixed(3)}s`,
+                  },
+                ].map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-center justify-between border-b border-border/40 py-3"
+                  >
+                    <span className="text-sm text-muted-foreground">
+                      {row.label}
+                    </span>
+                    <span className="font-mono text-sm font-medium">
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <h5 className="mt-6 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                All Regions
+              </h5>
+              <div className="mt-3 space-y-1">
+                {audioRegions.map((r, idx) => (
+                  <button
+                    key={r.id}
+                    onClick={() => setActiveRegionId(r.id)}
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
+                      r.id === activeRegionId
+                        ? "bg-accent-soft font-medium text-accent"
+                        : "text-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{
+                          background: REGION_SOLID[idx % REGION_SOLID.length],
+                        }}
+                      />
+                      <span>{r.label}</span>
+                    </div>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {r.start.toFixed(1)}–{r.end.toFixed(1)}s
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Select a region on the waveform to view its properties.
+            </p>
+          )}
+        </Card>
+      </div>
+    </main>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// BATCH MODE
+// ─────────────────────────────────────────────────────────────
+
+const ModeBBatch: React.FC<ModeBPageProps> = ({
+  projectId,
+  tasks,
+  projects,
+  tasksByProject,
+  onBack,
+  onSubmit,
+}) => {
+  const projectTasks = tasksByProject[projectId] ?? tasks;
+  const currentProject = projects.find((p) => p.id === projectId);
+
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(0);
+  const [batchDrafts, setBatchDrafts] = useState<
+    Record<number, { transcript: string; selectedTags: string[] }>
+  >({});
+  const [busy, setBusy] = useState(false);
+
+  const TAG_OPTIONS =
+    currentProject?.tags?.length
+      ? currentProject.tags
+      : ["Multiple speakers", "Inaudible", "Background noise"];
+
+  const totalItems = projectTasks.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages - 1);
+  const pageItems = projectTasks.slice(
+    safeCurrentPage * PAGE_SIZE,
+    (safeCurrentPage + 1) * PAGE_SIZE
+  );
+  const completedCount = projectTasks.filter((t) => t.completed).length;
+
+  const getItemDraft = (taskId: number) => {
+    if (batchDrafts[taskId]) return batchDrafts[taskId];
+    const task = projectTasks.find((t) => t.id === taskId);
+    return {
+      transcript: task?.transcript ?? task?.text ?? "",
+      selectedTags: task?.tags ?? [],
+    };
+  };
+
+  const updateItemTranscript = (taskId: number, transcript: string) => {
+    setBatchDrafts((prev) => ({
+      ...prev,
+      [taskId]: { ...getItemDraft(taskId), transcript },
+    }));
+  };
+
+  const updateItemTags = (taskId: number, tag: string) => {
+    setBatchDrafts((prev) => {
+      const draft = getItemDraft(taskId);
+      return {
+        ...prev,
+        [taskId]: {
+          ...draft,
+          selectedTags: draft.selectedTags.includes(tag)
+            ? draft.selectedTags.filter((t) => t !== tag)
+            : [...draft.selectedTags, tag],
+        },
+      };
+    });
+  };
+
+  const savePageChanges = async () => {
+    await Promise.all(
+      pageItems.map((task) => {
+        const draft = getItemDraft(task.id);
+        return onSubmit(task.id, draft.transcript, draft.selectedTags, {
+          preservePage: true,
+          silent: true,
+        });
+      })
+    );
+  };
+
+  const handleBatchSubmit = async () => {
+    setBusy(true);
+    try {
+      const results = await Promise.all(
+        projectTasks.map((task) => {
+          const draft = getItemDraft(task.id);
+          const shouldMarkDone = draft.selectedTags.length > 0;
+          return Promise.resolve(
+            onSubmit(task.id, draft.transcript, draft.selectedTags, {
+              preservePage: true,
+              silent: true,
+              completed: shouldMarkDone,
+            })
+          ).then(() => shouldMarkDone);
+        })
+      );
+      const missingCount = results.filter((done) => !done).length;
+      if (missingCount > 0) {
+        toast.warning("Some items are missing tags — saved as pending.");
+      } else {
+        toast.success("All items saved and marked as Done.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto max-w-7xl px-6 py-10">
+      {/* Top bar */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to project
+        </button>
+
+        <p className="text-sm text-muted-foreground">
+          Page {safeCurrentPage + 1} of {totalPages} · {completedCount} completed
+        </p>
+
+        {/* Review mode toggle */}
+        <div className="flex items-center gap-1 rounded-full border border-border bg-muted p-1">
+          <button
+            onClick={() => {
+              const firstTask = projectTasks[0];
+              if (firstTask)
+                window.location.href = `/annotation/${firstTask.id}?mode=single`;
+            }}
+            className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Review one item
+          </button>
+          <button className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-sm">
+            Review 10 items
+          </button>
+        </div>
+      </div>
+
+      {totalItems === 0 ? (
+        <Card className="border-border/60 p-12 text-center shadow-soft">
+          <h3 className="text-lg font-bold">No items yet</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This project has no review items.
+          </p>
+        </Card>
+      ) : (
+        <>
+          <div className="mb-4">
+            <h3 className="text-lg font-bold">Review 10 items</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Check items on this page, then submit them together.
+            </p>
+          </div>
+
+          {/* Batch table */}
+          <div className="overflow-hidden rounded-2xl border border-border/60 bg-white">
+            <div className="grid grid-cols-[80px_100px_minmax(200px,1fr)_minmax(300px,1.3fr)_80px] gap-3 border-b border-border/60 bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground">
+              <div>ID</div>
+              <div>Audio</div>
+              <div>Transcript</div>
+              <div>Tags</div>
+              <div>Status</div>
+            </div>
+
+            {pageItems.map((task, idx) => {
+              const isDone = task.completed;
+              const draft = getItemDraft(task.id);
+              const itemNumber = safeCurrentPage * PAGE_SIZE + idx + 1;
+              return (
+                <div
+                  key={task.id}
+                  className="grid grid-cols-[80px_100px_minmax(200px,1fr)_minmax(300px,1.3fr)_80px] items-center gap-3 border-b border-border/60 px-4 py-3"
+                >
+                  <div>
+                    <div className="font-mono text-xs">#{task.id}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Item {itemNumber}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
+                      aria-label="Play audio"
+                    >
+                      <Play className="h-4 w-4" />
+                    </button>
+                    <div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-amber-100">
+                        <div className="h-full w-7/12 rounded-full bg-amber-500" />
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>0:00 / 0:45</span>
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-amber-700">
+                          1x
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <input
+                      type="text"
+                      value={draft.transcript}
+                      onChange={(e) =>
+                        updateItemTranscript(task.id, e.target.value)
+                      }
+                      placeholder="Edit transcript..."
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {TAG_OPTIONS.map((tag) => {
+                      const isSelected = draft.selectedTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => updateItemTags(task.id, tag)}
+                          title={tag}
+                          className={`flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-all ${
+                            isSelected
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-white text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] ${
+                              isSelected
+                                ? "border border-primary bg-primary"
+                                : "border border-muted-foreground/40"
+                            }`}
+                          >
+                            {isSelected ? (
+                              <Check className="h-2 w-2 text-white" />
+                            ) : null}
+                          </span>
+                          <span className="max-w-[100px] truncate">{tag}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="text-center">
+                    <span
+                      className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
+                        isDone
+                          ? "bg-green-50 text-green-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {isDone ? "Done" : "Pending"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Pagination */}
+          <div className="mt-6 flex items-center">
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={busy || safeCurrentPage === 0}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await savePageChanges();
+                  setCurrentPage(Math.max(0, safeCurrentPage - 1));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" /> Previous page
+            </Button>
+
+            {safeCurrentPage + 1 < totalPages ? (
+              <Button
+                variant="outline"
+                className="ml-auto rounded-full"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await savePageChanges();
+                    setCurrentPage(safeCurrentPage + 1);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Next page <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                className="ml-auto rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+                onClick={handleBatchSubmit}
+                disabled={busy || pageItems.length === 0}
+              >
+                {busy ? "Saving…" : "Submit"}{" "}
+                <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+    </main>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// ENTRY POINT
+// ─────────────────────────────────────────────────────────────
+
+const ModeBPage: React.FC<ModeBPageProps> = (props) =>
+  props.mode === "single" ? (
+    <ModeBSingle {...props} />
+  ) : (
+    <ModeBBatch {...props} />
+  );
+
+export default ModeBPage;
