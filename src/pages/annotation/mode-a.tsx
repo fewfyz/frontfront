@@ -6,7 +6,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, ArrowRight, Check, Plus, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Circle,
+  CircleCheck,
+  FileText,
+  Tags,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { Project, Task } from "@/types";
 
@@ -44,6 +52,8 @@ const ModeASingle: React.FC<ModeAProps> = ({
   const currentIndex = projectTasks.findIndex((t) => t.id === taskId);
   const sidebarStart = Math.max(0, currentIndex - 2);
   const sidebar = projectTasks.slice(sidebarStart, sidebarStart + 6);
+  const completedCount = projectTasks.filter((t) => t.completed).length;
+  const taskPosition = currentIndex >= 0 ? currentIndex + 1 : 0;
 
   const TAG_OPTIONS =
     currentProject?.tags && currentProject.tags.length > 0
@@ -55,6 +65,8 @@ const ModeASingle: React.FC<ModeAProps> = ({
   );
   const [selectedTags, setSelectedTags] = useState<string[]>(current?.tags ?? []);
   const [busy, setBusy] = useState(false);
+  const hasTranscript = transcript.trim().length > 0;
+  const isReady = selectedTags.length > 0;
 
   useEffect(() => {
     setTranscript(current?.transcript ?? current?.text ?? "");
@@ -232,15 +244,100 @@ const ModeASingle: React.FC<ModeAProps> = ({
           </div>
         </Card>
 
-        {/* ── Right panel: region details placeholder ── */}
+        {/* ── Right panel: task status ── */}
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Region details
+            Status
           </h4>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Select a region on the waveform to view its properties, metadata and
-            available actions.
-          </p>
+
+          <div className="mt-5 rounded-xl border border-border/60 bg-muted/30 p-4">
+            <div className="flex items-center gap-3">
+              <span
+                className={`grid h-10 w-10 place-items-center rounded-full ${
+                  current?.completed
+                    ? "bg-green-50 text-green-700"
+                    : isReady
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {current?.completed || isReady ? (
+                  <CircleCheck className="h-5 w-5" />
+                ) : (
+                  <Circle className="h-5 w-5" />
+                )}
+              </span>
+              <div>
+                <p className="text-sm font-semibold">
+                  {current?.completed ? "Done" : isReady ? "Ready" : "Pending"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Task {taskPosition} of {projectTasks.length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-0">
+            {[
+              {
+                label: "Task ID",
+                value: `#${taskId}`,
+              },
+              {
+                label: "Project progress",
+                value: `${completedCount}/${projectTasks.length}`,
+              },
+              {
+                label: "Selected tags",
+                value: selectedTags.length.toString(),
+              },
+              {
+                label: "Transcript",
+                value: hasTranscript ? "Filled" : "Empty",
+              },
+            ].map((row) => (
+              <div
+                key={row.label}
+                className="flex items-center justify-between border-b border-border/40 py-3 text-sm"
+              >
+                <span className="text-muted-foreground">{row.label}</span>
+                <span className="font-medium">{row.value}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 space-y-3">
+            <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-card p-3">
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">
+                  {hasTranscript ? "Transcript ready" : "Transcript missing"}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {hasTranscript
+                    ? `${transcript.trim().length} characters`
+                    : "Add text before review."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-card p-3">
+              <Tags className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">
+                  {selectedTags.length > 0
+                    ? `${selectedTags.length} tag selected`
+                    : "No tags selected"}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {selectedTags.length > 0
+                    ? selectedTags.join(", ")
+                    : "Select at least one tag to mark ready."}
+                </p>
+              </div>
+            </div>
+          </div>
         </Card>
       </div>
     </main>

@@ -605,8 +605,8 @@ const Dashboard = ({
                       onClick={() => setNewMode(mode.value)}
                       className={`h-10 rounded-lg border text-sm font-medium transition ${
                         active
-                          ? "border-accent bg-accent-soft text-accent shadow-glow"
-                          : "border-border/70 bg-background hover:border-accent/50 hover:bg-muted/50"
+                          ? "border-accent bg-accent-soft text-accent shadow-glow hover:bg-accent-soft hover:text-accent"
+                          : "border-border/70 bg-background text-foreground hover:border-accent/50 hover:bg-muted/50 hover:text-foreground"
                       }`}
                     >
                       {mode.label}
@@ -669,6 +669,9 @@ const Dashboard = ({
               const pct = p.tasks
                 ? Math.round((p.completed / p.tasks) * 100)
                 : 0;
+              const modeLabel =
+                PROJECT_MODES.find((mode) => mode.value === (p.mode ?? "select"))
+                  ?.label ?? "Select Mode";
               return (
                 <div
                   key={p.id}
@@ -685,7 +688,15 @@ const Dashboard = ({
                       <FileText className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-semibold">{p.name}</p>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <p className="truncate font-semibold">{p.name}</p>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-accent/30 bg-accent-soft px-2 py-0 text-[11px] font-medium text-accent hover:bg-accent-soft"
+                        >
+                          {modeLabel}
+                        </Badge>
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {p.completed} of {p.tasks} tasks · {pct}%
                       </p>
