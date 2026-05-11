@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -43,6 +44,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import CompareMode from "./annotation/mode-c";
 
 type ProjectMode = "select" | "segment" | "compare";
 
@@ -73,6 +75,7 @@ type Page =
   | { name: "dashboard" }
   | { name: "project"; id: number }
   | { name: "label"; id: number; projectId: number; mode: "single" | "batch" }
+  | { name: "compare"; id: number; projectId: number }
   | { name: "annotatedBy"; projectId: number };
 
 const initialProjects: Project[] = [
@@ -615,6 +618,9 @@ const Index = () => {
             setTasksByProject((prev) => ({ [np.id]: buildTasksForProject(np.id, np.name), ...prev }));
             if (file) toast.success(`Project created — file ${file.name} uploaded`);
             else toast.success("Project created");
+            if (np.mode === "compare") {
+              setPage({ name: "project", id: np.id });
+            }
           }}
           onRequestDelete={(p: Project) => promptDeleteProject(p)}
           onRequestEdit={(p: Project) => promptEditProject(p)}
@@ -626,6 +632,7 @@ const Index = () => {
           tasks={tasksByProject[page.id] ?? []}
           onBack={() => go({ name: "dashboard" })}
           onLabel={(taskId, mode = "single") => go({ name: "label", id: taskId, projectId: page.id, mode })}
+          onCompare={(taskId) => go({ name: "compare", id: taskId, projectId: page.id })}
           onBatchReview={() => {
             const firstTask = (tasksByProject[page.id] ?? [])[0];
             if (firstTask) go({ name: "label", id: firstTask.id, projectId: page.id, mode: "batch" });
@@ -646,6 +653,17 @@ const Index = () => {
           onSubmit={handleSubmitTask}
           onGoTo={(id) => go({ name: "label", id, projectId: page.projectId, mode: page.mode })}
           mode={page.mode}
+        />
+      )}
+      {page.name === "compare" && tasksLoaded && (
+        <CompareMode
+          taskId={page.id}
+          projectId={page.projectId}
+          tasks={tasksByProject[page.projectId] ?? []}
+          project={syncedProjects.find((p) => p.id === page.projectId)!}
+          onBack={() => go({ name: "project", id: page.projectId })}
+          onSubmit={handleSubmitTask}
+          onGoTo={(id) => go({ name: "compare", id, projectId: page.projectId })}
         />
       )}
       {page.name === "annotatedBy" && (
@@ -1209,7 +1227,12 @@ const Dashboard = ({
                       <FileText className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-semibold">{p.name}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate font-semibold">{p.name}</p>
+                        <Badge variant="outline" className="shrink-0 border-border/70 bg-muted/40 text-[10px] uppercase text-muted-foreground">
+                          {p.mode ?? "select"}
+                        </Badge>
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {p.completed} of {p.tasks} tasks · {pct}%
                       </p>
@@ -1300,6 +1323,7 @@ const ProjectView = ({
   tasks,
   onBack,
   onLabel,
+  onCompare,
   onBatchReview,
   onRequestDelete,
   onRequestEdit,
@@ -1308,11 +1332,13 @@ const ProjectView = ({
   tasks: Task[];
   onBack: () => void;
   onLabel: (id: number, mode?: "single" | "batch") => void;
+  onCompare: (id: number) => void;
   onBatchReview: () => void;
   onRequestDelete: (p: Project) => void;
   onRequestEdit: (p: Project) => void;
 }) => {
   const firstReviewTask = tasks.find((t) => !t.completed) ?? tasks[0];
+  const isCompareMode = project.mode === "compare";
 
   return (
   <main className="mx-auto max-w-7xl px-6 py-10">
@@ -1325,7 +1351,12 @@ const ProjectView = ({
 
     <div className="mt-3 flex items-end justify-between">
       <div>
-        <h1 className="font-display text-3xl font-extrabold">{project.name}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="font-display text-3xl font-extrabold">{project.name}</h1>
+          <Badge variant="outline" className="border-accent/25 bg-accent-soft text-accent">
+            {project.mode === "compare" ? "Compare Mode" : project.mode === "segment" ? "Segment Mode" : "Select Mode"}
+          </Badge>
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {project.completed} of {project.tasks} tasks completed
         </p>
@@ -1351,10 +1382,12 @@ const ProjectView = ({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Review mode
+            {isCompareMode ? "Compare mode" : "Review mode"}
           </p>
           <h2 className="text-lg font-semibold">
-            Choose how you want to review this project.
+            {isCompareMode
+              ? "Open any item to listen and rank its three audio files."
+              : "Choose how you want to review this project."}
           </h2>
         </div>
         <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
@@ -1362,20 +1395,25 @@ const ProjectView = ({
             variant="default"
             size="sm"
             disabled={!firstReviewTask}
-            onClick={() => firstReviewTask && onLabel(firstReviewTask.id, "single")}
-            className="rounded-l-full"
+            onClick={() =>
+              firstReviewTask &&
+              (isCompareMode ? onCompare(firstReviewTask.id) : onLabel(firstReviewTask.id, "single"))
+            }
+            className={isCompareMode ? "rounded-full" : "rounded-l-full"}
           >
-            Review one item
+            {isCompareMode ? "Start compare" : "Review one item"}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={tasks.length === 0}
-            onClick={onBatchReview}
-            className="rounded-r-full"
-          >
-            Review 10 items
-          </Button>
+          {!isCompareMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={tasks.length === 0}
+              onClick={onBatchReview}
+              className="rounded-r-full"
+            >
+              Review 10 items
+            </Button>
+          )}
         </div>
       </div>
     </Card>
@@ -1394,7 +1432,13 @@ const ProjectView = ({
           </thead>
           <tbody>
             {tasks.map((r) => (
-              <tr key={r.id} className="border-t border-border/60 transition hover:bg-muted/40">
+              <tr
+                key={r.id}
+                onClick={() => (isCompareMode ? onCompare(r.id) : undefined)}
+                className={`border-t border-border/60 transition hover:bg-muted/40 ${
+                  isCompareMode ? "cursor-pointer" : ""
+                }`}
+              >
                 <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{r.id}</td>
                 <td className="px-6 py-4">
                   <Badge
@@ -1419,7 +1463,7 @@ const ProjectView = ({
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onLabel(r.id);
+                          isCompareMode ? onCompare(r.id) : onLabel(r.id);
                         }}
                         className="text-accent hover:bg-accent-soft hover:text-accent"
                       >
@@ -1432,11 +1476,11 @@ const ProjectView = ({
                       variant="ghost"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onLabel(r.id);
+                        isCompareMode ? onCompare(r.id) : onLabel(r.id);
                       }}
                       className="text-accent hover:bg-accent-soft hover:text-accent"
                     >
-                      Label <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                      {isCompareMode ? "Compare" : "Label"} <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </Button>
                   )}
                 </td>
