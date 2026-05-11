@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import {
   Play,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTaskTracking } from "@/lib/tracking";
 
 type Project = {
   id: number;
@@ -59,6 +60,7 @@ const getSavedCompareRank = (task?: Task): CompareRank[] => {
 type CompareModeProps = {
   taskId: number;
   projectId: number;
+  userId: string;
   tasks: Task[];
   project: Project;
   onBack: () => void;
@@ -73,6 +75,8 @@ type CompareModeProps = {
 
 const CompareMode = ({
   taskId,
+  projectId,
+  userId,
   tasks,
   project,
   onBack,
@@ -84,9 +88,25 @@ const CompareMode = ({
   const [rankings, setRankings] = useState<CompareRank[]>(getSavedCompareRank(current));
   const [playing, setPlaying] = useState<CompareChoice | null>(null);
   const [busy, setBusy] = useState(false);
+  const tracking = useTaskTracking({
+    projectId,
+    taskId,
+    userId,
+    mode: "compare",
+  });
+  const audioTimersRef = useRef<Record<CompareChoice, number | undefined>>({
+    A: undefined,
+    B: undefined,
+    C: undefined,
+  });
 
   useEffect(() => {
     setRankings(getSavedCompareRank(current));
+    setPlaying(null);
+    Object.values(audioTimersRef.current).forEach((timer) => {
+      if (timer) window.clearTimeout(timer);
+    });
+    audioTimersRef.current = { A: undefined, B: undefined, C: undefined };
   }, [current?.id]);
 
   if (!current) {
@@ -119,18 +139,53 @@ const CompareMode = ({
   const sidebarTasks = tasks.slice(sidebarStart, sidebarStart + 6);
 
   const updateRanking = (place: number, value: CompareChoice) => {
-    setRankings((prev) =>
-      prev.map((rank, idx) => (idx === place ? value : rank))
-    );
+    setRankings((prev) => {
+      const next = prev.map((rank, idx) => (idx === place ? value : rank));
+      tracking.track(prev[place] ? "change_ranking" : "rank_audio", {
+        audioId: value,
+        elementId: `ranking-${place + 1}`,
+        elementType: "select",
+        valueBefore: prev,
+        valueAfter: next,
+        metadata: {
+          rankPosition: place + 1,
+          selectedAudio: value,
+        },
+      });
+      return next;
+    });
   };
 
   const playPreview = (label: CompareChoice, tone: number) => {
+    if (playing && playing !== label) {
+      tracking.trackAudio("stop", {
+        audioId: `audio-${playing}`,
+        elementId: `play-audio-${playing}`,
+        elementType: "button",
+      });
+      window.clearTimeout(audioTimersRef.current[playing]);
+      audioTimersRef.current[playing] = undefined;
+    }
+    tracking.trackAudio("play", {
+      audioId: `audio-${label}`,
+      elementId: `play-audio-${label}`,
+      elementType: "button",
+      currentAudioTime: 0,
+    });
     setPlaying(label);
     const AudioContextCtor =
       window.AudioContext ||
       (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextCtor) {
-      setTimeout(() => setPlaying(null), 700);
+      audioTimersRef.current[label] = window.setTimeout(() => {
+        tracking.trackAudio("stop", {
+          audioId: `audio-${label}`,
+          elementId: `play-audio-${label}`,
+          elementType: "button",
+          currentAudioTime: 0.7,
+        });
+        setPlaying(null);
+      }, 700);
       return;
     }
 
@@ -146,7 +201,13 @@ const CompareMode = ({
     gain.connect(audioCtx.destination);
     oscillator.start();
     oscillator.stop(audioCtx.currentTime + 0.68);
-    setTimeout(() => {
+    audioTimersRef.current[label] = window.setTimeout(() => {
+      tracking.trackAudio("stop", {
+        audioId: `audio-${label}`,
+        elementId: `play-audio-${label}`,
+        elementType: "button",
+        currentAudioTime: 0.68,
+      });
       setPlaying(null);
       audioCtx.close();
     }, 760);
@@ -160,6 +221,10 @@ const CompareMode = ({
 
     setBusy(true);
     try {
+      tracking.trackSubmit({
+        rankings,
+        transcript: current.text,
+      });
       await onSubmit(taskId, current.text, rankings.filter(isCompareChoice), {
         completed: true,
       });

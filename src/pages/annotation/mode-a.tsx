@@ -16,12 +16,19 @@ import {
   Tags,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  completeTaskTiming,
+  startTaskTiming,
+  trackInteraction,
+  useTaskTracking,
+} from "@/lib/tracking";
 import type { Project, Task } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ModeAProps {
   taskId: number;
   projectId: number;
+  userId: string;
   tasks: Task[];
   projects: Project[];
   tasksByProject: Record<number, Task[]>;
@@ -39,6 +46,7 @@ interface ModeAProps {
 const ModeASingle: React.FC<ModeAProps> = ({
   taskId,
   projectId,
+  userId,
   tasks,
   projects,
   tasksByProject,
@@ -67,20 +75,48 @@ const ModeASingle: React.FC<ModeAProps> = ({
   const [busy, setBusy] = useState(false);
   const hasTranscript = transcript.trim().length > 0;
   const isReady = selectedTags.length > 0;
+  const tracking = useTaskTracking({
+    projectId,
+    taskId,
+    userId,
+    mode: "select",
+  });
+  const transcriptBeforeRef = useRef(transcript);
 
   useEffect(() => {
     setTranscript(current?.transcript ?? current?.text ?? "");
     setSelectedTags(current?.tags ?? []);
+    transcriptBeforeRef.current = current?.transcript ?? current?.text ?? "";
   }, [taskId]);
 
   const toggleTag = (tag: string) =>
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
+    setSelectedTags((prev) => {
+      const next = prev.includes(tag)
+        ? prev.filter((t) => t !== tag)
+        : [...prev, tag];
+      tracking.track(prev.length === 0 ? "select_option" : "change_answer", {
+        elementId: `tag-${tag}`,
+        elementType: "tag_option",
+        valueBefore: prev,
+        valueAfter: next,
+        metadata: {
+          selectedTag: tag,
+          secondsBeforeSelection:
+            (Date.now() -
+              new Date(startTaskTiming({ projectId, taskId, userId, mode: "select" })).getTime()) /
+            1000,
+        },
+      });
+      return next;
+    });
 
   const handleSubmit = async () => {
     setBusy(true);
     try {
+      tracking.trackSubmit({
+        selectedTags,
+        transcriptLength: transcript.trim().length,
+      });
       await onSubmit(taskId, transcript, selectedTags, {
         completed: selectedTags.length > 0,
       });
@@ -180,6 +216,16 @@ const ModeASingle: React.FC<ModeAProps> = ({
           <textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
+            onBlur={() => {
+              if (transcriptBeforeRef.current === transcript) return;
+              tracking.track("change_answer", {
+                elementId: "transcript",
+                elementType: "textarea",
+                valueBefore: transcriptBeforeRef.current,
+                valueAfter: transcript,
+              });
+              transcriptBeforeRef.current = transcript;
+            }}
             className="mt-3 min-h-24 w-full resize-none rounded-xl border border-border bg-background p-4 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
 
@@ -347,6 +393,7 @@ const ModeASingle: React.FC<ModeAProps> = ({
 // ─── Batch View (10 items) ────────────────────────────────────────────────────
 interface ModeABatchProps {
   projectId: number;
+  userId: string;
   tasks: Task[];
   projects: Project[];
   tasksByProject: Record<number, Task[]>;
@@ -361,6 +408,7 @@ interface ModeABatchProps {
 
 const ModeABatch: React.FC<ModeABatchProps> = ({
   projectId,
+  userId,
   tasks,
   projects,
   tasksByProject,
@@ -401,26 +449,55 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
   };
 
   const updateItemTranscript = (taskId: number, transcript: string) => {
+    const draft = getItemDraft(taskId);
+    trackInteraction(
+      { projectId, taskId, userId, mode: "select" },
+      {
+        eventType: "change_answer",
+        elementId: "batch-transcript",
+        elementType: "input",
+        valueBefore: draft.transcript,
+        valueAfter: transcript,
+      }
+    );
     setBatchDrafts((prev) => ({
       ...prev,
-      [taskId]: { ...getItemDraft(taskId), transcript },
+      [taskId]: { ...draft, transcript },
     }));
   };
 
   const updateItemTags = (taskId: number, tag: string) => {
     setBatchDrafts((prev) => {
       const draft = getItemDraft(taskId);
+      const nextTags = draft.selectedTags.includes(tag)
+        ? draft.selectedTags.filter((t) => t !== tag)
+        : [...draft.selectedTags, tag];
+      trackInteraction(
+        { projectId, taskId, userId, mode: "select" },
+        {
+          eventType: draft.selectedTags.length === 0 ? "select_option" : "change_answer",
+          elementId: `batch-tag-${tag}`,
+          elementType: "tag_option",
+          valueBefore: draft.selectedTags,
+          valueAfter: nextTags,
+          metadata: { selectedTag: tag },
+        }
+      );
       return {
         ...prev,
         [taskId]: {
           ...draft,
-          selectedTags: draft.selectedTags.includes(tag)
-            ? draft.selectedTags.filter((t) => t !== tag)
-            : [...draft.selectedTags, tag],
+          selectedTags: nextTags,
         },
       };
     });
   };
+
+  useEffect(() => {
+    pageItems.forEach((task) =>
+      startTaskTiming({ projectId, taskId: task.id, userId, mode: "select" })
+    );
+  }, [pageItems, projectId, userId]);
 
   const savePageChanges = async () => {
     await Promise.all(
@@ -441,6 +518,27 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
         allItems.map((task) => {
           const draft = getItemDraft(task.id);
           const shouldMarkDone = draft.selectedTags.length > 0;
+          const timing = completeTaskTiming({
+            projectId,
+            taskId: task.id,
+            userId,
+            mode: "select",
+          });
+          trackInteraction(
+            { projectId, taskId: task.id, userId, mode: "select" },
+            {
+              eventType: "submit",
+              elementId: "batch-submit",
+              elementType: "button",
+              metadata: {
+                selectedTags: draft.selectedTags,
+                transcriptLength: draft.transcript.trim().length,
+                startedAt: timing.startedAt,
+                submittedAt: timing.submittedAt,
+                durationSeconds: timing.durationSeconds,
+              },
+            }
+          );
           return Promise.resolve(
             onSubmit(task.id, draft.transcript, draft.selectedTags, {
               preservePage: true,
@@ -529,6 +627,19 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
                     <button
                       type="button"
                       disabled={isDone}
+                      onClick={() =>
+                        trackInteraction(
+                          { projectId, taskId: task.id, userId, mode: "select" },
+                          {
+                            eventType: "play",
+                            audioId: `select-batch-audio-${task.id}`,
+                            elementId: "select-batch-play",
+                            elementType: "button",
+                            playCount: 1,
+                            currentAudioTime: 0,
+                          }
+                        )
+                      }
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Play audio"
                     >
@@ -669,6 +780,7 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
 interface ModeAPageProps {
   taskId: number;
   projectId: number;
+  userId: string;
   mode: "single" | "batch";
   tasks: Task[];
   projects: Project[];
@@ -689,6 +801,7 @@ const ModeAPage: React.FC<ModeAPageProps> = (props) =>
   ) : (
     <ModeABatch
       projectId={props.projectId}
+      userId={props.userId}
       tasks={props.tasks}
       projects={props.projects}
       tasksByProject={props.tasksByProject}

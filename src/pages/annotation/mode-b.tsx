@@ -16,6 +16,12 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  completeTaskTiming,
+  startTaskTiming,
+  trackInteraction,
+  useTaskTracking,
+} from "@/lib/tracking";
 import { REGION_COLORS, REGION_SOLID } from "@/types";
 import type { AudioRegion, Project, Task } from "@/types";
 
@@ -83,6 +89,10 @@ interface WaveformPlayerProps {
   onRegionClick: (id: string) => void;
   onRegionUpdate: (id: string, start: number, end: number) => void;
   onWaveSurferReady: (ws: any) => void;
+  onAudioEvent: (
+    eventType: "play" | "pause" | "stop",
+    data: { audioId: string; currentAudioTime?: number }
+  ) => void;
 }
 
 const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
@@ -91,6 +101,7 @@ const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
   onRegionClick,
   onRegionUpdate,
   onWaveSurferReady,
+  onAudioEvent,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<any>(null);
@@ -180,8 +191,16 @@ const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
     const region = allRegions.find((r: any) => r.id === activeRegionId);
     if (region) {
       ws.setTime(region.start);
+      onAudioEvent("play", {
+        audioId: `segment-audio-${region.id}`,
+        currentAudioTime: region.start,
+      });
       ws.play();
     } else {
+      onAudioEvent(isPlaying ? "pause" : "play", {
+        audioId: "segment-audio",
+        currentAudioTime: ws.getCurrentTime?.(),
+      });
       ws.playPause();
     }
   };
@@ -201,14 +220,26 @@ const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => wsRef.current?.stop()}
+            onClick={() => {
+              onAudioEvent("stop", {
+                audioId: "segment-audio",
+                currentAudioTime: wsRef.current?.getCurrentTime?.(),
+              });
+              wsRef.current?.stop();
+            }}
             className="h-8 w-8 rounded-full p-0"
           >
             <Square className="h-3.5 w-3.5" />
           </Button>
           <Button
             size="sm"
-            onClick={() => wsRef.current?.playPause()}
+            onClick={() => {
+              onAudioEvent(isPlaying ? "pause" : "play", {
+                audioId: "segment-audio",
+                currentAudioTime: wsRef.current?.getCurrentTime?.(),
+              });
+              wsRef.current?.playPause();
+            }}
             className="h-8 w-8 rounded-full bg-gradient-accent p-0"
           >
             {isPlaying ? (
@@ -238,6 +269,7 @@ const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
 interface ModeBPageProps {
   taskId: number;
   projectId: number;
+  userId: string;
   mode: "single" | "batch";
   tasks: Task[];
   projects: Project[];
@@ -263,6 +295,7 @@ interface ModeBPageProps {
 const ModeBSingle: React.FC<ModeBPageProps> = ({
   taskId,
   projectId,
+  userId,
   tasks,
   projects,
   tasksByProject,
@@ -296,10 +329,18 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
   ]);
   const [activeRegionId, setActiveRegionId] = useState<string | null>("r1");
   const wsRef = useRef<any>(null);
+  const tracking = useTaskTracking({
+    projectId,
+    taskId,
+    userId,
+    mode: "segment",
+  });
+  const transcriptBeforeRef = useRef(transcript);
 
   useEffect(() => {
     setTranscript(current?.transcript ?? current?.text ?? "");
     setSelectedTags(current?.tags ?? []);
+    transcriptBeforeRef.current = current?.transcript ?? current?.text ?? "";
   }, [taskId]);
 
   const activeRegion =
@@ -316,24 +357,51 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
     };
     setAudioRegions((prev) => [...prev, newRegion]);
     setActiveRegionId(newRegion.id);
+    tracking.track("create_segment", {
+      elementId: "add-region",
+      elementType: "button",
+      valueAfter: newRegion,
+    });
   };
 
   const removeRegion = (id: string) => {
+    const removed = audioRegions.find((r) => r.id === id);
     setAudioRegions((prev) => prev.filter((r) => r.id !== id));
     if (activeRegionId === id) {
       const remaining = audioRegions.filter((r) => r.id !== id);
       setActiveRegionId(remaining[0]?.id ?? null);
     }
+    tracking.track("delete_segment", {
+      elementId: `region-${id}-delete`,
+      elementType: "button",
+      valueBefore: removed,
+    });
   };
 
   const toggleTag = (tag: string) =>
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
+    setSelectedTags((prev) => {
+      const next = prev.includes(tag)
+        ? prev.filter((t) => t !== tag)
+        : [...prev, tag];
+      tracking.track(prev.length === 0 ? "select_option" : "change_answer", {
+        elementId: `segment-tag-${tag}`,
+        elementType: "tag_option",
+        valueBefore: prev,
+        valueAfter: next,
+        metadata: { selectedTag: tag },
+      });
+      return next;
+    });
 
   const handleSubmit = async () => {
     setBusy(true);
     try {
+      tracking.trackSubmit({
+        selectedTags,
+        transcriptLength: transcript.trim().length,
+        segmentCount: audioRegions.length,
+        segments: audioRegions,
+      });
       await onSubmit(taskId, transcript, selectedTags, {
         completed: selectedTags.length > 0,
       });
@@ -424,14 +492,40 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
             regions={audioRegions}
             activeRegionId={activeRegionId}
             onRegionClick={setActiveRegionId}
-            onRegionUpdate={(id, start, end) =>
-              setAudioRegions((prev) =>
-                prev.map((r) => (r.id === id ? { ...r, start, end } : r))
-              )
-            }
+            onRegionUpdate={(id, start, end) => {
+              setAudioRegions((prev) => {
+                const before = prev.find((r) => r.id === id);
+                if (before) {
+                  if (before.start !== start) {
+                    tracking.track("adjust_segment_start", {
+                      elementId: `region-${id}`,
+                      elementType: "audio_region",
+                      valueBefore: before.start,
+                      valueAfter: start,
+                    });
+                  }
+                  if (before.end !== end) {
+                    tracking.track("adjust_segment_end", {
+                      elementId: `region-${id}`,
+                      elementType: "audio_region",
+                      valueBefore: before.end,
+                      valueAfter: end,
+                    });
+                  }
+                  tracking.track("edit_segment", {
+                    elementId: `region-${id}`,
+                    elementType: "audio_region",
+                    valueBefore: before,
+                    valueAfter: { ...before, start, end },
+                  });
+                }
+                return prev.map((r) => (r.id === id ? { ...r, start, end } : r));
+              });
+            }}
             onWaveSurferReady={(ws) => {
               wsRef.current = ws;
             }}
+            onAudioEvent={(eventType, data) => tracking.trackAudio(eventType, data)}
           />
 
           {/* Region tabs */}
@@ -513,6 +607,16 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
           <textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
+            onBlur={() => {
+              if (transcriptBeforeRef.current === transcript) return;
+              tracking.track("change_answer", {
+                elementId: "segment-transcript",
+                elementType: "textarea",
+                valueBefore: transcriptBeforeRef.current,
+                valueAfter: transcript,
+              });
+              transcriptBeforeRef.current = transcript;
+            }}
             className="mt-3 min-h-24 w-full resize-none rounded-xl border border-border bg-background p-4 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
 
@@ -665,6 +769,7 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
 
 const ModeBBatch: React.FC<ModeBPageProps> = ({
   projectId,
+  userId,
   tasks,
   projects,
   tasksByProject,
@@ -705,26 +810,55 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
   };
 
   const updateItemTranscript = (taskId: number, transcript: string) => {
+    const draft = getItemDraft(taskId);
+    trackInteraction(
+      { projectId, taskId, userId, mode: "segment" },
+      {
+        eventType: "change_answer",
+        elementId: "segment-batch-transcript",
+        elementType: "input",
+        valueBefore: draft.transcript,
+        valueAfter: transcript,
+      }
+    );
     setBatchDrafts((prev) => ({
       ...prev,
-      [taskId]: { ...getItemDraft(taskId), transcript },
+      [taskId]: { ...draft, transcript },
     }));
   };
 
   const updateItemTags = (taskId: number, tag: string) => {
     setBatchDrafts((prev) => {
       const draft = getItemDraft(taskId);
+      const nextTags = draft.selectedTags.includes(tag)
+        ? draft.selectedTags.filter((t) => t !== tag)
+        : [...draft.selectedTags, tag];
+      trackInteraction(
+        { projectId, taskId, userId, mode: "segment" },
+        {
+          eventType: draft.selectedTags.length === 0 ? "select_option" : "change_answer",
+          elementId: `segment-batch-tag-${tag}`,
+          elementType: "tag_option",
+          valueBefore: draft.selectedTags,
+          valueAfter: nextTags,
+          metadata: { selectedTag: tag },
+        }
+      );
       return {
         ...prev,
         [taskId]: {
           ...draft,
-          selectedTags: draft.selectedTags.includes(tag)
-            ? draft.selectedTags.filter((t) => t !== tag)
-            : [...draft.selectedTags, tag],
+          selectedTags: nextTags,
         },
       };
     });
   };
+
+  useEffect(() => {
+    pageItems.forEach((task) =>
+      startTaskTiming({ projectId, taskId: task.id, userId, mode: "segment" })
+    );
+  }, [pageItems, projectId, userId]);
 
   const savePageChanges = async () => {
     await Promise.all(
@@ -745,6 +879,27 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
         projectTasks.map((task) => {
           const draft = getItemDraft(task.id);
           const shouldMarkDone = draft.selectedTags.length > 0;
+          const timing = completeTaskTiming({
+            projectId,
+            taskId: task.id,
+            userId,
+            mode: "segment",
+          });
+          trackInteraction(
+            { projectId, taskId: task.id, userId, mode: "segment" },
+            {
+              eventType: "submit",
+              elementId: "segment-batch-submit",
+              elementType: "button",
+              metadata: {
+                selectedTags: draft.selectedTags,
+                transcriptLength: draft.transcript.trim().length,
+                startedAt: timing.startedAt,
+                submittedAt: timing.submittedAt,
+                durationSeconds: timing.durationSeconds,
+              },
+            }
+          );
           return Promise.resolve(
             onSubmit(task.id, draft.transcript, draft.selectedTags, {
               preservePage: true,
@@ -843,6 +998,19 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
                   <div className="flex flex-col gap-2">
                     <button
                       type="button"
+                      onClick={() =>
+                        trackInteraction(
+                          { projectId, taskId: task.id, userId, mode: "segment" },
+                          {
+                            eventType: "play",
+                            audioId: `segment-batch-audio-${task.id}`,
+                            elementId: "segment-batch-play",
+                            elementType: "button",
+                            playCount: 1,
+                            currentAudioTime: 0,
+                          }
+                        )
+                      }
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
                       aria-label="Play audio"
                     >

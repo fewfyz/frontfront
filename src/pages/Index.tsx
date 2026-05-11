@@ -1533,6 +1533,7 @@ const Index = () => {
             <ModeAPage
               taskId={page.id}
               projectId={page.projectId}
+              userId={authUser.id}
               mode={page.mode}
               tasks={tasksByProject[page.projectId] ?? []}
               projects={projects}
@@ -1549,6 +1550,7 @@ const Index = () => {
             <ModeBPage
               taskId={page.id}
               projectId={page.projectId}
+              userId={authUser.id}
               mode={page.mode}
               tasks={tasksByProject[page.projectId] ?? []}
               projects={projects}
@@ -1565,6 +1567,7 @@ const Index = () => {
             <CompareMode
               taskId={page.id}
               projectId={page.projectId}
+              userId={authUser.id}
               tasks={tasksByProject[page.projectId] ?? []}
               project={syncedProjects.find((p) => p.id === page.projectId)!}
               onBack={() => go({ name: "project", id: page.projectId })}
