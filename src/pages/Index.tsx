@@ -185,43 +185,40 @@ const ProjectView = ({
         </div>
       </div>
 
-      {/* Review mode selector — only shown for mode-a (select) */}
-      {(project.mode === "select" || !project.mode) && (
-        <Card className="mt-8 border-border/60 p-4 shadow-soft">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Review mode
-              </p>
-              <h2 className="text-lg font-semibold">
-                Choose how you want to review this project.
-              </h2>
-            </div>
-            <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
-              <Button
-                variant="default"
-                size="sm"
-                disabled={!firstReviewTask}
-                onClick={() =>
-                  firstReviewTask && onLabel(firstReviewTask.id, "single")
-                }
-                className="rounded-l-full"
-              >
-                Review one item
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={tasks.length === 0}
-                onClick={onBatchReview}
-                className="rounded-r-full"
-              >
-                Review 10 items
-              </Button>
-            </div>
+      <Card className="mt-8 border-border/60 p-4 shadow-soft">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Review mode
+            </p>
+            <h2 className="text-lg font-semibold">
+              Choose how you want to review this project.
+            </h2>
           </div>
-        </Card>
-      )}
+          <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
+            <Button
+              variant="default"
+              size="sm"
+              disabled={!firstReviewTask}
+              onClick={() =>
+                firstReviewTask && onLabel(firstReviewTask.id, "single")
+              }
+              className="rounded-l-full"
+            >
+              Review one item
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={tasks.length === 0}
+              onClick={onBatchReview}
+              className="rounded-r-full"
+            >
+              Review 10 items
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       <Card className="mt-6 overflow-hidden border-border/60 p-0 shadow-soft">
         <div className="overflow-auto">
@@ -1557,6 +1554,9 @@ const Index = () => {
               tasksByProject={tasksByProject}
               onBack={() => go({ name: "project", id: page.projectId })}
               onSubmit={handleSubmitTask}
+              onReviewModeChange={(mode) =>
+                go({ name: "label", id: page.id, projectId: page.projectId, mode })
+              }
               onGoTo={(id) =>
                 go({ name: "label", id, projectId: page.projectId, mode: page.mode })
               }
@@ -1568,10 +1568,14 @@ const Index = () => {
               taskId={page.id}
               projectId={page.projectId}
               userId={authUser.id}
+              mode={page.mode}
               tasks={tasksByProject[page.projectId] ?? []}
               project={syncedProjects.find((p) => p.id === page.projectId)!}
               onBack={() => go({ name: "project", id: page.projectId })}
               onSubmit={handleSubmitTask}
+              onReviewModeChange={(mode) =>
+                go({ name: "label", id: page.id, projectId: page.projectId, mode })
+              }
               onGoTo={(id) =>
                 go({ name: "label", id, projectId: page.projectId, mode: page.mode })
               }

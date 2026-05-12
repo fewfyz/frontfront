@@ -285,6 +285,7 @@ interface ModeBPageProps {
       completed?: boolean;
     }
   ) => Promise<void> | void;
+  onReviewModeChange: (mode: "single" | "batch") => void;
   onGoTo: (id: number) => void;
 }
 
@@ -301,6 +302,7 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
   tasksByProject,
   onBack,
   onSubmit,
+  onReviewModeChange,
   onGoTo,
 }) => {
   const projectTasks = tasksByProject[projectId] ?? tasks;
@@ -433,9 +435,7 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
             Review one item
           </button>
           <button
-            onClick={() => {
-              window.location.href = `/annotation/${projectId}?mode=batch`;
-            }}
+            onClick={() => onReviewModeChange("batch")}
             className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Review 10 items
@@ -767,6 +767,13 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
 // BATCH MODE
 // ─────────────────────────────────────────────────────────────
 
+type SegmentBatchDraft = {
+  transcript: string;
+  selectedTags: string[];
+  audioRegions: AudioRegion[];
+  activeRegionId: string | null;
+};
+
 const ModeBBatch: React.FC<ModeBPageProps> = ({
   projectId,
   userId,
@@ -775,15 +782,15 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
   tasksByProject,
   onBack,
   onSubmit,
+  onReviewModeChange,
 }) => {
   const projectTasks = tasksByProject[projectId] ?? tasks;
   const currentProject = projects.find((p) => p.id === projectId);
 
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(0);
-  const [batchDrafts, setBatchDrafts] = useState<
-    Record<number, { transcript: string; selectedTags: string[] }>
-  >({});
+  const [batchDrafts, setBatchDrafts] = useState<Record<number, SegmentBatchDraft>>({});
+  const batchRegionCounters = useRef<Record<number, number>>({});
   const [busy, setBusy] = useState(false);
 
   const TAG_OPTIONS =
@@ -800,13 +807,151 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
   );
   const completedCount = projectTasks.filter((t) => t.completed).length;
 
-  const getItemDraft = (taskId: number) => {
+  const getItemDraft = (taskId: number): SegmentBatchDraft => {
     if (batchDrafts[taskId]) return batchDrafts[taskId];
     const task = projectTasks.find((t) => t.id === taskId);
+    const regionId = `${taskId}-r1`;
     return {
       transcript: task?.transcript ?? task?.text ?? "",
       selectedTags: task?.tags ?? [],
+      audioRegions: [
+        {
+          id: regionId,
+          start: 1.5,
+          end: 7,
+          label: "Speech 1",
+          color: REGION_COLORS[0],
+        },
+      ],
+      activeRegionId: regionId,
     };
+  };
+
+  const updateItemRegions = (
+    taskId: number,
+    updater: (draft: SegmentBatchDraft) => SegmentBatchDraft
+  ) => {
+    setBatchDrafts((prev) => {
+      const draft = prev[taskId] ?? getItemDraft(taskId);
+      return {
+        ...prev,
+        [taskId]: updater(draft),
+      };
+    });
+  };
+
+  const addItemRegion = (taskId: number) => {
+    updateItemRegions(taskId, (draft) => {
+      const nextCount =
+        batchRegionCounters.current[taskId] ?? draft.audioRegions.length + 1;
+      batchRegionCounters.current[taskId] = nextCount + 1;
+      const idx = draft.audioRegions.length;
+      const newRegion: AudioRegion = {
+        id: `${taskId}-r${nextCount}`,
+        start: 10 + idx * 6,
+        end: 15 + idx * 6,
+        label: `Region ${idx + 1}`,
+        color: REGION_COLORS[idx % REGION_COLORS.length],
+      };
+      trackInteraction(
+        { projectId, taskId, userId, mode: "segment" },
+        {
+          eventType: "create_segment",
+          elementId: "segment-batch-add-region",
+          elementType: "button",
+          valueAfter: newRegion,
+        }
+      );
+      return {
+        ...draft,
+        audioRegions: [...draft.audioRegions, newRegion],
+        activeRegionId: newRegion.id,
+      };
+    });
+  };
+
+  const removeItemRegion = (taskId: number, regionId: string) => {
+    updateItemRegions(taskId, (draft) => {
+      const removed = draft.audioRegions.find((r) => r.id === regionId);
+      const remaining = draft.audioRegions.filter((r) => r.id !== regionId);
+      trackInteraction(
+        { projectId, taskId, userId, mode: "segment" },
+        {
+          eventType: "delete_segment",
+          elementId: `segment-batch-region-${regionId}-delete`,
+          elementType: "button",
+          valueBefore: removed,
+        }
+      );
+      return {
+        ...draft,
+        audioRegions: remaining,
+        activeRegionId:
+          draft.activeRegionId === regionId
+            ? remaining[0]?.id ?? null
+            : draft.activeRegionId,
+      };
+    });
+  };
+
+  const setItemActiveRegion = (taskId: number, regionId: string | null) => {
+    updateItemRegions(taskId, (draft) => ({
+      ...draft,
+      activeRegionId: regionId,
+    }));
+  };
+
+  const updateItemRegionTiming = (
+    taskId: number,
+    regionId: string,
+    start: number,
+    end: number
+  ) => {
+    updateItemRegions(taskId, (draft) => {
+      const before = draft.audioRegions.find((r) => r.id === regionId);
+      if (before) {
+        if (before.start !== start) {
+          trackInteraction(
+            { projectId, taskId, userId, mode: "segment" },
+            {
+              eventType: "adjust_segment_start",
+              elementId: `segment-batch-region-${regionId}`,
+              elementType: "audio_region",
+              valueBefore: before.start,
+              valueAfter: start,
+            }
+          );
+        }
+        if (before.end !== end) {
+          trackInteraction(
+            { projectId, taskId, userId, mode: "segment" },
+            {
+              eventType: "adjust_segment_end",
+              elementId: `segment-batch-region-${regionId}`,
+              elementType: "audio_region",
+              valueBefore: before.end,
+              valueAfter: end,
+            }
+          );
+        }
+        trackInteraction(
+          { projectId, taskId, userId, mode: "segment" },
+          {
+            eventType: "edit_segment",
+            elementId: `segment-batch-region-${regionId}`,
+            elementType: "audio_region",
+            valueBefore: before,
+            valueAfter: { ...before, start, end },
+          }
+        );
+      }
+      return {
+        ...draft,
+        audioRegions: draft.audioRegions.map((r) =>
+          r.id === regionId ? { ...r, start, end } : r
+        ),
+      };
+    });
   };
 
   const updateItemTranscript = (taskId: number, transcript: string) => {
@@ -823,13 +968,13 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
     );
     setBatchDrafts((prev) => ({
       ...prev,
-      [taskId]: { ...draft, transcript },
+      [taskId]: { ...(prev[taskId] ?? draft), transcript },
     }));
   };
 
   const updateItemTags = (taskId: number, tag: string) => {
     setBatchDrafts((prev) => {
-      const draft = getItemDraft(taskId);
+      const draft = prev[taskId] ?? getItemDraft(taskId);
       const nextTags = draft.selectedTags.includes(tag)
         ? draft.selectedTags.filter((t) => t !== tag)
         : [...draft.selectedTags, tag];
@@ -894,6 +1039,8 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
               metadata: {
                 selectedTags: draft.selectedTags,
                 transcriptLength: draft.transcript.trim().length,
+                segmentCount: draft.audioRegions.length,
+                segments: draft.audioRegions,
                 startedAt: timing.startedAt,
                 submittedAt: timing.submittedAt,
                 durationSeconds: timing.durationSeconds,
@@ -940,8 +1087,7 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
           <button
             onClick={() => {
               const firstTask = projectTasks[0];
-              if (firstTask)
-                window.location.href = `/annotation/${firstTask.id}?mode=single`;
+              if (firstTask) onReviewModeChange("single");
             }}
             className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -971,11 +1117,9 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
 
           {/* Batch table */}
           <div className="overflow-hidden rounded-2xl border border-border/60 bg-white">
-            <div className="grid grid-cols-[80px_100px_minmax(200px,1fr)_minmax(300px,1.3fr)_80px] gap-3 border-b border-border/60 bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground">
+            <div className="grid grid-cols-[110px_minmax(0,1fr)_90px] gap-4 border-b border-border/60 bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground">
               <div>ID</div>
-              <div>Audio</div>
-              <div>Transcript</div>
-              <div>Tags</div>
+              <div>Audio / Transcript / Tags</div>
               <div>Status</div>
             </div>
 
@@ -986,7 +1130,7 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="grid grid-cols-[80px_100px_minmax(200px,1fr)_minmax(300px,1.3fr)_80px] items-center gap-3 border-b border-border/60 px-4 py-3"
+                  className="grid grid-cols-[110px_minmax(0,1fr)_90px] gap-4 border-b border-border/60 px-4 py-4"
                 >
                   <div>
                     <div className="font-mono text-xs">#{task.id}</div>
@@ -995,85 +1139,167 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        trackInteraction(
-                          { projectId, taskId: task.id, userId, mode: "segment" },
-                          {
-                            eventType: "play",
-                            audioId: `segment-batch-audio-${task.id}`,
-                            elementId: "segment-batch-play",
-                            elementType: "button",
-                            playCount: 1,
-                            currentAudioTime: 0,
-                          }
-                        )
-                      }
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
-                      aria-label="Play audio"
-                    >
-                      <Play className="h-4 w-4" />
-                    </button>
-                    <div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-amber-100">
-                        <div className="h-full w-7/12 rounded-full bg-amber-500" />
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+                      <WaveformPlayer
+                        regions={draft.audioRegions}
+                        activeRegionId={draft.activeRegionId}
+                        onRegionClick={(regionId) =>
+                          setItemActiveRegion(task.id, regionId)
+                        }
+                        onRegionUpdate={(regionId, start, end) =>
+                          updateItemRegionTiming(task.id, regionId, start, end)
+                        }
+                        onWaveSurferReady={() => undefined}
+                        onAudioEvent={(eventType, data) =>
+                          trackInteraction(
+                            { projectId, taskId: task.id, userId, mode: "segment" },
+                            {
+                              eventType,
+                              audioId: data.audioId ?? `segment-batch-audio-${task.id}`,
+                              elementId: "segment-batch-audio",
+                              elementType: "audio",
+                              currentAudioTime: data.currentAudioTime,
+                              playCount: eventType === "play" ? 1 : undefined,
+                            }
+                          )
+                        }
+                      />
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        {draft.audioRegions.map((region, regionIndex) => (
+                          <button
+                            key={region.id}
+                            type="button"
+                            onClick={() => setItemActiveRegion(task.id, region.id)}
+                            className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-all ${
+                              region.id === draft.activeRegionId
+                                ? "border-amber-400/60 bg-white text-amber-800"
+                                : "border-border bg-white/70 text-muted-foreground hover:border-accent/40"
+                            }`}
+                          >
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{
+                                background:
+                                  REGION_SOLID[regionIndex % REGION_SOLID.length],
+                              }}
+                            />
+                            {region.label}
+                            {draft.audioRegions.length > 1 && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeItemRegion(task.id, region.id);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.stopPropagation();
+                                    removeItemRegion(task.id, region.id);
+                                  }
+                                }}
+                                className="ml-0.5 rounded-full p-0.5 hover:bg-black/10"
+                              >
+                                <X className="h-3 w-3" />
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => addItemRegion(task.id)}
+                          className="flex items-center gap-1 rounded-full border border-dashed border-border bg-white/70 px-3 py-1 text-sm text-muted-foreground transition hover:border-accent/40 hover:text-accent"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Add
+                        </button>
                       </div>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>0:00 / 0:45</span>
-                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-amber-700">
-                          1x
-                        </span>
+
+                      {draft.activeRegionId && (
+                        <div className="mt-3 flex items-center gap-3 rounded-lg bg-white/70 px-4 py-2 text-sm">
+                          {(() => {
+                            const activeRegion = draft.audioRegions.find(
+                              (region) => region.id === draft.activeRegionId
+                            );
+                            if (!activeRegion) return null;
+                            const activeIndex = draft.audioRegions.findIndex(
+                              (region) => region.id === activeRegion.id
+                            );
+                            return (
+                              <>
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{
+                                    background:
+                                      REGION_SOLID[
+                                        activeIndex % REGION_SOLID.length
+                                      ],
+                                  }}
+                                />
+                                <span className="font-medium">
+                                  {activeRegion.label}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {activeRegion.start.toFixed(2)}s -{" "}
+                                  {activeRegion.end.toFixed(2)}s
+                                </span>
+                                <span className="ml-auto text-muted-foreground">
+                                  ({(activeRegion.end - activeRegion.start).toFixed(2)}s)
+                                </span>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-[minmax(260px,0.8fr)_minmax(360px,1.2fr)]">
+                      <input
+                        type="text"
+                        value={draft.transcript}
+                        onChange={(e) =>
+                          updateItemTranscript(task.id, e.target.value)
+                        }
+                        placeholder="Edit transcript..."
+                        className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      />
+
+                      <div className="flex flex-wrap gap-2">
+                        {TAG_OPTIONS.map((tag) => {
+                          const isSelected = draft.selectedTags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => updateItemTags(task.id, tag)}
+                              title={tag}
+                              className={`flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-all ${
+                                isSelected
+                                  ? "border-primary bg-primary/10 text-primary"
+                                  : "border-border bg-white text-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <span
+                                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] ${
+                                  isSelected
+                                    ? "border border-primary bg-primary"
+                                    : "border border-muted-foreground/40"
+                                }`}
+                              >
+                                {isSelected ? (
+                                  <Check className="h-2 w-2 text-white" />
+                                ) : null}
+                              </span>
+                              <span className="max-w-[130px] truncate">{tag}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
 
-                  <div>
-                    <input
-                      type="text"
-                      value={draft.transcript}
-                      onChange={(e) =>
-                        updateItemTranscript(task.id, e.target.value)
-                      }
-                      placeholder="Edit transcript..."
-                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {TAG_OPTIONS.map((tag) => {
-                      const isSelected = draft.selectedTags.includes(tag);
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => updateItemTags(task.id, tag)}
-                          title={tag}
-                          className={`flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-all ${
-                            isSelected
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border bg-white text-foreground hover:bg-muted"
-                          }`}
-                        >
-                          <span
-                            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] ${
-                              isSelected
-                                ? "border border-primary bg-primary"
-                                : "border border-muted-foreground/40"
-                            }`}
-                          >
-                            {isSelected ? (
-                              <Check className="h-2 w-2 text-white" />
-                            ) : null}
-                          </span>
-                          <span className="max-w-[100px] truncate">{tag}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="text-center">
+                  <div className="pt-2 text-center">
                     <span
                       className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
                         isDone

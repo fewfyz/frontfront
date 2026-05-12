@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import {
   ArrowLeft,
+  ArrowRight,
+  Check,
   CircleCheck,
   Clock,
   Headphones,
@@ -19,7 +21,12 @@ import {
   Play,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useTaskTracking } from "@/lib/tracking";
+import {
+  completeTaskTiming,
+  startTaskTiming,
+  trackInteraction,
+  useTaskTracking,
+} from "@/lib/tracking";
 
 type Project = {
   id: number;
@@ -61,6 +68,7 @@ type CompareModeProps = {
   taskId: number;
   projectId: number;
   userId: string;
+  mode: "single" | "batch";
   tasks: Task[];
   project: Project;
   onBack: () => void;
@@ -70,10 +78,13 @@ type CompareModeProps = {
     tags: string[],
     options?: { preservePage?: boolean; silent?: boolean; completed?: boolean }
   ) => Promise<void> | void;
+  onReviewModeChange: (mode: "single" | "batch") => void;
   onGoTo: (id: number) => void;
 };
 
-const CompareMode = ({
+const rankLabel = (index: number) => ["1st Place", "2nd Place", "3rd Place"][index];
+
+const CompareSingle = ({
   taskId,
   projectId,
   userId,
@@ -81,6 +92,7 @@ const CompareMode = ({
   project,
   onBack,
   onSubmit,
+  onReviewModeChange,
   onGoTo,
 }: CompareModeProps) => {
   const current = tasks.find((t) => t.id === taskId) ?? tasks[0];
@@ -238,12 +250,10 @@ const CompareMode = ({
     }
   };
 
-  const rankLabel = (index: number) => ["1st Place", "2nd Place", "3rd Place"][index];
-
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background">
       <div className="border-b border-border/60 bg-card">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-5">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-6 py-5">
           <button
             onClick={onBack}
             className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -256,6 +266,18 @@ const CompareMode = ({
             <p className="mt-1 text-sm text-muted-foreground">
               Listen and rank audio files for each task in {project.name}.
             </p>
+          </div>
+          <div className="ml-auto flex items-center gap-1 rounded-full border border-border bg-muted p-1 max-sm:ml-0">
+            <button className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-sm">
+              Review one item
+            </button>
+            <button
+              type="button"
+              onClick={() => onReviewModeChange("batch")}
+              className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Review 10 items
+            </button>
           </div>
         </div>
       </div>
@@ -438,5 +460,343 @@ const CompareMode = ({
     </main>
   );
 };
+
+const CompareBatch = ({
+  projectId,
+  userId,
+  tasks,
+  project,
+  onBack,
+  onSubmit,
+  onReviewModeChange,
+}: CompareModeProps) => {
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(0);
+  const [batchRankings, setBatchRankings] = useState<Record<number, CompareRank[]>>({});
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const totalItems = tasks.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages - 1);
+  const pageItems = tasks.slice(
+    safeCurrentPage * PAGE_SIZE,
+    (safeCurrentPage + 1) * PAGE_SIZE
+  );
+  const completedCount = tasks.filter((t) => t.completed).length;
+
+  const getTaskRankings = (task: Task) => batchRankings[task.id] ?? getSavedCompareRank(task);
+  const isTaskComplete = (ranking: CompareRank[]) =>
+    ranking.every(Boolean) && new Set(ranking).size === 3;
+
+  useEffect(() => {
+    pageItems.forEach((task) =>
+      startTaskTiming({ projectId, taskId: task.id, userId, mode: "compare" })
+    );
+  }, [pageItems, projectId, userId]);
+
+  const updateRanking = (task: Task, place: number, value: CompareChoice) => {
+    setBatchRankings((prev) => {
+      const currentRankings = prev[task.id] ?? getSavedCompareRank(task);
+      const next = currentRankings.map((rank, idx) => (idx === place ? value : rank));
+      trackInteraction(
+        { projectId, taskId: task.id, userId, mode: "compare" },
+        {
+          eventType: currentRankings[place] ? "change_ranking" : "rank_audio",
+          audioId: value,
+          elementId: `compare-batch-ranking-${place + 1}`,
+          elementType: "select",
+          valueBefore: currentRankings,
+          valueAfter: next,
+          metadata: {
+            rankPosition: place + 1,
+            selectedAudio: value,
+          },
+        }
+      );
+      return { ...prev, [task.id]: next };
+    });
+  };
+
+  const playPreview = (task: Task, audio: (typeof COMPARE_AUDIO)[number]) => {
+    const audioId = `compare-batch-audio-${task.id}-${audio.label}`;
+    trackInteraction(
+      { projectId, taskId: task.id, userId, mode: "compare" },
+      {
+        eventType: "play",
+        audioId,
+        elementId: "compare-batch-play",
+        elementType: "button",
+        currentAudioTime: 0,
+        playCount: 1,
+      }
+    );
+    setPlaying(audioId);
+    window.setTimeout(() => setPlaying((current) => (current === audioId ? null : current)), 700);
+  };
+
+  const savePageChanges = async () => {
+    await Promise.all(
+      pageItems.map((task) => {
+        const rankings = getTaskRankings(task);
+        return onSubmit(task.id, task.text, rankings.filter(isCompareChoice), {
+          preservePage: true,
+          silent: true,
+          completed: isTaskComplete(rankings),
+        });
+      })
+    );
+  };
+
+  const handleBatchSubmit = async () => {
+    setBusy(true);
+    try {
+      const results = await Promise.all(
+        tasks.map((task) => {
+          const rankings = getTaskRankings(task);
+          const shouldMarkDone = isTaskComplete(rankings);
+          const timing = completeTaskTiming({
+            projectId,
+            taskId: task.id,
+            userId,
+            mode: "compare",
+          });
+          trackInteraction(
+            { projectId, taskId: task.id, userId, mode: "compare" },
+            {
+              eventType: "submit",
+              elementId: "compare-batch-submit",
+              elementType: "button",
+              metadata: {
+                rankings,
+                transcript: task.text,
+                startedAt: timing.startedAt,
+                submittedAt: timing.submittedAt,
+                durationSeconds: timing.durationSeconds,
+              },
+            }
+          );
+          return Promise.resolve(
+            onSubmit(task.id, task.text, rankings.filter(isCompareChoice), {
+              preservePage: true,
+              silent: true,
+              completed: shouldMarkDone,
+            })
+          ).then(() => shouldMarkDone);
+        })
+      );
+      const missingCount = results.filter((done) => !done).length;
+      if (missingCount > 0) {
+        toast.warning("Some compare items are missing complete rankings.");
+      } else {
+        toast.success("All compare items saved and marked as Done.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto max-w-7xl px-6 py-10">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to project
+        </button>
+        <p className="text-sm text-muted-foreground">
+          Page {safeCurrentPage + 1} of {totalPages} · {completedCount} completed
+        </p>
+        <div className="flex w-fit items-center gap-1 rounded-full border border-border bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => onReviewModeChange("single")}
+            className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Review one item
+          </button>
+          <button className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-sm">
+            Review 10 items
+          </button>
+        </div>
+      </div>
+
+      {totalItems === 0 ? (
+        <Card className="border-border/60 p-12 text-center shadow-soft">
+          <h3 className="font-display text-lg font-bold">No compare items</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This project has no data to compare yet.
+          </p>
+        </Card>
+      ) : (
+        <>
+          <div className="mb-4">
+            <h3 className="font-display text-lg font-bold">Review 10 compare items</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Rank Audio A, B, and C for each task in {project.name}.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-border/60 bg-white">
+            <div className="min-w-[1100px]">
+              <div className="grid grid-cols-[110px_minmax(420px,1.25fr)_minmax(360px,0.85fr)_90px] gap-4 border-b border-border/60 bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground">
+                <div>ID</div>
+                <div>Audio</div>
+                <div>Rankings</div>
+                <div>Status</div>
+              </div>
+
+              {pageItems.map((task, idx) => {
+                const rankings = getTaskRankings(task);
+                const complete = isTaskComplete(rankings);
+                const itemNumber = safeCurrentPage * PAGE_SIZE + idx + 1;
+
+                return (
+                  <div
+                    key={task.id}
+                    className="grid grid-cols-[110px_minmax(420px,1.25fr)_minmax(360px,0.85fr)_90px] items-center gap-4 border-b border-border/60 px-4 py-3"
+                  >
+                    <div>
+                      <div className="font-mono text-xs">#{task.id}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Item {itemNumber}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      {COMPARE_AUDIO.map((audio) => {
+                        const audioId = `compare-batch-audio-${task.id}-${audio.label}`;
+                        return (
+                          <button
+                            key={audio.label}
+                            type="button"
+                            onClick={() => playPreview(task, audio)}
+                            className={`flex h-24 flex-col items-stretch justify-center gap-2 rounded-xl border px-3 py-2 text-left transition ${
+                              playing === audioId
+                                ? "border-accent bg-accent-soft text-accent"
+                                : "border-border bg-muted/30 hover:bg-muted"
+                            }`}
+                            aria-label={`Play ${audio.title}`}
+                          >
+                            <span className="flex items-center gap-2 text-base font-semibold">
+                              <span className="grid h-8 w-8 place-items-center rounded-full border border-border bg-white">
+                                <Play className="h-4 w-4" />
+                              </span>
+                              Audio {audio.label}
+                            </span>
+                            <span className="flex h-8 items-center gap-1 overflow-hidden rounded-lg bg-white/70 px-2">
+                              {Array.from({ length: 28 }).map((_, barIndex) => (
+                                <span
+                                  key={barIndex}
+                                  className="w-1 rounded-full bg-amber-400"
+                                  style={{
+                                    height: `${10 + ((barIndex * (audio.label.charCodeAt(0) + 3)) % 18)}px`,
+                                    opacity: barIndex < 17 ? 1 : 0.35,
+                                  }}
+                                />
+                              ))}
+                            </span>
+                            <span className="font-mono text-xs text-muted-foreground">
+                              0:00 / {audio.duration}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {[0, 1, 2].map((place) => (
+                        <Select
+                          key={place}
+                          value={rankings[place]}
+                          onValueChange={(value) =>
+                            updateRanking(task, place, value as CompareChoice)
+                          }
+                        >
+                          <SelectTrigger className="h-9 rounded-lg bg-muted/60 px-2 text-sm">
+                            <SelectValue placeholder={rankLabel(place)} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COMPARE_AUDIO.map((audio) => (
+                              <SelectItem key={audio.label} value={audio.label}>
+                                {audio.label} - {rankLabel(place)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ))}
+                    </div>
+
+                    <div className="text-center">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                          complete
+                            ? "bg-green-50 text-green-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {complete ? <Check className="h-3 w-3" /> : null}
+                        {complete ? "Done" : "Pending"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-center">
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={busy || safeCurrentPage === 0}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await savePageChanges();
+                  setCurrentPage(Math.max(0, safeCurrentPage - 1));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" /> Previous page
+            </Button>
+
+            {safeCurrentPage + 1 < totalPages ? (
+              <Button
+                variant="outline"
+                className="ml-auto rounded-full"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await savePageChanges();
+                    setCurrentPage(safeCurrentPage + 1);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Next page <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                className="ml-auto rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
+                onClick={handleBatchSubmit}
+                disabled={busy || pageItems.length === 0}
+              >
+                {busy ? "Saving..." : "Submit"} <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+    </main>
+  );
+};
+
+const CompareMode = (props: CompareModeProps) =>
+  props.mode === "single" ? <CompareSingle {...props} /> : <CompareBatch {...props} />;
 
 export default CompareMode;
