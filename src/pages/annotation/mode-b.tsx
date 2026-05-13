@@ -2,6 +2,7 @@
 // โหมด B — Region Annotation + Batch Review
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -103,6 +104,7 @@ const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
   onWaveSurferReady,
   onAudioEvent,
 }) => {
+  const { t } = useTranslation("common");
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<any>(null);
   const regionsPluginRef = useRef<any>(null);
@@ -254,7 +256,7 @@ const WaveformPlayer: React.FC<WaveformPlayerProps> = ({
             onClick={handlePlayRegion}
             className="h-8 rounded-full px-3 text-xs"
           >
-            Play region
+            {t("buttons.playRegion")}
           </Button>
         </div>
       </div>
@@ -305,9 +307,9 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
   onReviewModeChange,
   onGoTo,
 }) => {
+  const { t: translate } = useTranslation("common");
   const projectTasks = tasksByProject[projectId] ?? tasks;
   const currentProject = projects.find((p) => p.id === projectId);
-  const current = projectTasks.find((t) => t.id === taskId);
   const currentIndex = projectTasks.findIndex((t) => t.id === taskId);
   const sidebarStart = Math.max(0, currentIndex - 2);
   const sidebar = projectTasks.slice(sidebarStart, sidebarStart + 6);
@@ -315,7 +317,11 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
   const TAG_OPTIONS =
     currentProject?.tags?.length
       ? currentProject.tags
-      : ["Multiple speakers", "Inaudible", "Background noise"];
+      : [
+          translate("tags.multipleSpeakers"),
+          translate("tags.inaudible"),
+          translate("tags.backgroundNoise"),
+        ];
 
   const [transcript, setTranscript] = useState(
     current?.transcript ?? current?.text ?? ""
@@ -407,7 +413,7 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
       await onSubmit(taskId, transcript, selectedTags, {
         completed: selectedTags.length > 0,
       });
-      toast.success("Saved");
+      toast.success(translate("toast.saved"));
     } finally {
       setBusy(false);
     }
@@ -421,24 +427,24 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
           onClick={onBack}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to project
+          <ArrowLeft className="h-4 w-4" /> {translate("annotation.backToProject")}
         </button>
 
         <p className="text-sm text-muted-foreground">
-          Projects / Labeling ·{" "}
+          {translate("annotation.projectsLabeling")} ·{" "}
           <span className="font-mono text-foreground">#{taskId}</span>
         </p>
 
         {/* Review mode toggle */}
         <div className="flex items-center gap-1 rounded-full border border-border bg-muted p-1">
           <button className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-sm">
-            Review one item
+            {translate("buttons.reviewOne")}
           </button>
           <button
             onClick={() => onReviewModeChange("batch")}
             className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Review 10 items
+            {translate("buttons.reviewBatch")}
           </button>
         </div>
       </div>
@@ -449,7 +455,7 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
         {/* ── Left: Task sidebar ── */}
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Tasks
+            {translate("annotation.tasks")}
           </h4>
           <div className="mt-4 space-y-2">
             {sidebar.map((t) => (
@@ -478,7 +484,7 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
                     variant="outline"
                     className="ml-auto border-accent/30 bg-accent-soft text-accent"
                   >
-                    Done
+                    {translate("status.done")}
                   </Badge>
                 )}
               </div>
@@ -1058,9 +1064,9 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
       );
       const missingCount = results.filter((done) => !done).length;
       if (missingCount > 0) {
-        toast.warning("Some items are missing tags — saved as pending.");
+        toast.warning(t("toast.batchMissingTags"));
       } else {
-        toast.success("All items saved and marked as Done.");
+        toast.success(t("toast.batchSavedDone"));
       }
     } finally {
       setBusy(false);
@@ -1307,7 +1313,7 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
                           : "bg-amber-50 text-amber-700"
                       }`}
                     >
-                      {isDone ? "Done" : "Pending"}
+                      {isDone ? t("status.done") : t("status.pending")}
                     </span>
                   </div>
                 </div>

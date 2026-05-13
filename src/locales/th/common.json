@@ -1,0 +1,241 @@
+{
+  "annotatedBy": {
+    "back": "ย้อนกลับ",
+    "title": "ผู้ตรวจสอบ",
+    "completedCount": "เสร็จแล้ว {{count}}"
+  },
+  "table": {
+    "id": "รหัส",
+    "annotatedBy": "ผู้ตรวจสอบ",
+    "text": "ข้อความ",
+    "status": "สถานะ",
+    "action": "การทำงาน"
+  },
+  "status": {
+    "done": "เสร็จแล้ว",
+    "pending": "รอดำเนินการ",
+    "ready": "พร้อม"
+  },
+  "projectView": {
+    "back": "กลับไปที่รายชื่อโครงการ",
+    "edit": "แก้ไขโครงการ",
+    "delete": "ลบโครงการ",
+    "reviewMode": "โหมดตรวจสอบ",
+    "reviewPrompt": "ตรวจสอบรายการเดียวหรือชุดเพื่อยืนยันการติดฉลาก",
+    "reviewOne": "ตรวจสอบ 1 รายการ",
+    "reviewBatch": "ตรวจสอบ 10 รายการ"
+  },
+  "action": {
+    "edit": "แก้ไข",
+    "label": "ดูป้ายกำกับ"
+  },
+  "dashboard": {
+    "title": "แดชบอร์ด",
+    "welcome": "ยินดีต้อนรับกลับ",
+    "subtitle": "พื้นที่งานป้ายกำกับของคุณพร้อมใช้งานแล้ว",
+    "inviteMembers": "เชิญสมาชิก",
+    "newProject": "โครงการใหม่",
+    "recentProjects": "โครงการล่าสุด",
+    "totalProjects": "โครงการ",
+    "projectActions": "การดำเนินการโครงการ",
+    "edit": "แก้ไข",
+    "delete": "ลบ"
+  },
+  "createProject": {
+    "title": "สร้างโครงการ",
+    "description": "สร้างพื้นที่งานสำหรับงานป้ายกำกับของคุณ",
+    "name": "ชื่อโครงการ",
+    "placeholderName": "ใส่ชื่อโครงการ",
+    "descriptionLabel": "คำอธิบาย",
+    "optional": "ไม่บังคับ",
+    "placeholderDescription": "อธิบายความต้องการของโครงการนี้",
+    "uploadDataset": "อัปโหลดชุดข้อมูล",
+    "clickToUpload": "คลิกเพื่ออัปโหลด",
+    "orDragAndDrop": "หรือวางไฟล์",
+    "uploadFormats": "CSV, XLSX, TXT หรือ JSON",
+    "tags": "แท็ก",
+    "maxTagsReached": "ถึงจำนวนแท็กสูงสุดแล้ว",
+    "youCanAddTags": "คุณสามารถเพิ่มได้สูงสุด 6 แท็ก",
+    "addCustomTag": "เพิ่มแท็กเอง",
+    "addTag": "เพิ่ม",
+    "projectMode": "โหมดโครงการ",
+    "createProject": "สร้างโครงการ"
+  },
+  "editDialog": {
+    "uploadDataset": "อัปโหลดชุดข้อมูล",
+    "tags": "แท็ก",
+    "maxReached": "ถึงจำนวนสูงสุดแล้ว",
+    "upTo6": "สูงสุด 6",
+    "saveChanges": "บันทึกการเปลี่ยนแปลง"
+  },
+  "stats": {
+    "activeProjects": "โครงการที่กำลังใช้งาน",
+    "acrossYourTeam": "ทั่วทั้งทีมของคุณ",
+    "totalTasks": "งานทั้งหมด",
+    "queuedForReview": "รอการตรวจสอบ",
+    "completed": "เสร็จสิ้น",
+    "annotatedThisCycle": "ติดฉลากในรอบนี้"
+  },
+  "resources": {
+    "title": "แหล่งข้อมูล",
+    "documentation": "เอกสาร",
+    "apiReference": "เอกสารอ้างอิง API",
+    "teamGuidelines": "แนวทางทีม"
+  },
+  "topbar": {
+    "brand": "AnnotateAI",
+    "myAccount": "บัญชีของฉัน",
+    "logout": "ออกจากระบบ"
+  },
+  "projectView": {
+    "back": "กลับไปที่รายชื่อโครงการ",
+    "edit": "แก้ไขโครงการ",
+    "delete": "ลบโครงการ",
+    "reviewMode": "โหมดตรวจสอบ",
+    "reviewPrompt": "ตรวจสอบรายการเดียวหรือชุดเพื่อยืนยันการติดฉลาก",
+    "reviewOne": "ตรวจสอบ 1 รายการ",
+    "reviewBatch": "ตรวจสอบ 10 รายการ",
+    "taskSummary": "{{completed}} จาก {{total}} เสร็จแล้ว"
+  },
+  "login": {
+    "error": {
+      "enterCredentials": "กรุณากรอกอีเมลและรหัสผ่าน",
+      "authFailed": "เข้าสู่ระบบล้มเหลว กรุณาลองอีกครั้ง"
+    },
+    "success": {
+      "accountCreated": "สร้างบัญชีเรียบร้อยแล้ว",
+      "welcome": "ยินดีต้อนรับ, {{name}}!",
+      "signedInDev": "เข้าสู่ระบบในนาม {{email}}"
+    },
+    "brandTag": "ทำให้งานป้ายกำกับง่ายขึ้น",
+    "heroTitleLine1": "เปลี่ยนข้อมูลของคุณ",
+    "heroTitleLine2": "ให้มีชีวิตด้วยการติดป้ายฉลากอย่างรวดเร็ว",
+    "heroSubtitle": "ลงชื่อเข้าใช้เพื่อทำงานต่อ",
+    "welcomeBack": "ยินดีต้อนรับกลับ",
+    "createAccount": "สร้างบัญชี",
+    "signInResume": "ลงชื่อเข้าใช้เพื่อกลับมาทำงานต่อ",
+    "signUpStart": "ลงทะเบียนเพื่อเริ่มต้น",
+    "emailOrUsername": "อีเมลหรือชื่อผู้ใช้",
+    "placeholderEmail": "กรอกอีเมลของคุณ",
+    "password": "รหัสผ่าน",
+    "placeholderPassword": "กรอกรหัสผ่านของคุณ",
+    "pleaseWait": "กรุณารอสักครู่...",
+    "signIn": "เข้าสู่ระบบ",
+    "signUp": "ลงทะเบียน",
+    "noAccount": "ยังไม่มีบัญชี?",
+    "haveAccount": "มีบัญชีอยู่แล้ว?"
+  },
+  "toast": {
+    "unsupportedFile": "ประเภทไฟล์ไม่รองรับ กรุณาอัปโหลด CSV, XLSX, TXT หรือ JSON",
+    "batchMissingTags": "รายการบางรายการยังขาดแท็ก พวกมันถูกบันทึกแล้วแต่ไม่ได้ทำเครื่องหมายว่าเสร็จสิ้น",
+    "batchSavedDone": "รายการตรวจสอบทั้งหมดถูกบันทึกและทำเครื่องหมายว่าเสร็จสิ้นแล้ว",
+    "unsupportedFileSimple": "ประเภทไฟล์ไม่รองรับ",
+    "tagExists": "แท็กนี้มีอยู่แล้ว",
+    "projectCreatedWithFile": "สร้างโครงการแล้ว — อัปโหลดไฟล์ {{fileName}} แล้ว",
+    "projectCreated": "สร้างโครงการแล้ว",
+    "datasetUploaded": "อัปโหลดชุดข้อมูลแล้ว — {{fileName}}",
+    "inviteSoon": "เชิญสมาชิกเร็วๆ นี้",
+    "projectDeleted": "ลบโครงการแล้ว",
+    "projectUpdated": "อัปเดตโครงการแล้ว",
+    "failedLoadProgress": "ไม่สามารถโหลดความคืบหน้าได้",
+    "signedOutSaved": "ออกจากระบบและบันทึกความคืบหน้าแล้ว",
+    "taskNotFound": "ไม่พบงาน",
+    "submitted": "ส่งเรียบร้อยแล้ว",
+    "allTasksCompleted": "งานทั้งหมดเสร็จสิ้นแล้ว",
+    "saved": "บันทึกแล้ว",
+    "savedPending": "บันทึกการเปลี่ยนแปลงที่รอดำเนินการ",
+    "couldNotSaveProgress": "ไม่สามารถบันทึกความคืบหน้าได้",
+    "noReviewItems": "ไม่มีรายการตรวจสอบ",
+    "compareItemsMissingRankings": "รายการเปรียบเทียบบางรายการยังขาดการจัดอันดับครบถ้วน",
+    "compareItemsSavedDone": "รายการเปรียบเทียบทั้งหมดถูกบันทึกและทำเครื่องหมายว่าเสร็จสิ้นแล้ว"
+  },
+  "errors": {
+    "pageNotFound": "โอ๊ะ! ไม่พบหน้าที่คุณกำลังค้นหา",
+    "returnHome": "กลับสู่หน้าหลัก"
+  },
+  "tags": {
+    "multipleSpeakers": "ผู้พูดหลายคน",
+    "inaudible": "ฟังไม่ชัด",
+    "backgroundNoise": "มีเสียงรบกวน"
+  },
+  "buttons": {
+    "previous": "ก่อนหน้า",
+    "previousPage": "หน้าก่อนหน้า",
+    "nextPage": "หน้าถัดไป",
+    "submit": "ส่ง",
+    "saving": "กำลังบันทึก…",
+    "add": "เพิ่ม",
+    "backToProject": "กลับไปที่โครงการ",
+    "playRegion": "เล่นส่วนเสียง",
+    "reviewOne": "ตรวจสอบ 1 รายการ",
+    "reviewBatch": "ตรวจสอบ 10 รายการ"
+  },
+  "annotation": {
+    "backToProject": "กลับไปที่โครงการ",
+    "projectsLabeling": "โครงการ / ป้ายกำกับ",
+    "tasks": "งาน",
+    "status": "สถานะ",
+    "transcription": "การถอดเสียง",
+    "transcriptionHint": "กรุณาแก้ไขคำถอดเสียงหากจำเป็น",
+    "tagAnyThatApply": "แท็กที่เกี่ยวข้อง",
+    "selectTagsForTask": "เลือกแท็กหนึ่งหรือมากกว่าสำหรับงานนี้",
+    "regionDetails": "รายละเอียดส่วนเสียง",
+    "start": "เริ่มต้น",
+    "end": "สิ้นสุด",
+    "duration": "ระยะเวลา",
+    "allRegions": "ส่วนทั้งหมด",
+    "selectRegionProperties": "เลือกส่วนในรูปคลื่นเสียงเพื่อดูคุณสมบัติ",
+    "taskId": "รหัสงาน",
+    "projectProgress": "ความคืบหน้าโครงการ",
+    "selectedTags": "แท็กที่เลือก",
+    "transcriptFilled": "กรอกแล้ว",
+    "transcriptEmpty": "ว่าง",
+    "transcriptReady": "คำถอดเสียงพร้อม",
+    "transcriptMissing": "คำถอดเสียงหายไป",
+    "addTextBeforeReview": "เพิ่มข้อความก่อนการตรวจสอบ",
+    "noTagsSelected": "ยังไม่ได้เลือกแท็ก",
+    "selectAtLeastOneTag": "เลือกแท็กอย่างน้อยหนึ่งแท็กเพื่อทำเครื่องหมายว่าเรียบร้อย",
+    "item": "รายการ {{number}}",
+    "noItemsYet": "ยังไม่มีรายการ",
+    "noReviewItems": "โครงการนี้ยังไม่มีรายการที่ต้องตรวจสอบ",
+    "review10ItemsTitle": "ตรวจสอบ 10 รายการ",
+    "review10ItemsDescription": "ทำเครื่องหมายรายการสูงสุด 10 รายการในหน้านี้ แล้วส่งเมื่อพร้อม",
+    "taskProgress": "งาน {{current}} จาก {{total}}",
+    "playAudioLabel": "เล่นเสียง",
+    "editTranscriptPlaceholder": "แก้ไขคำถอดเสียง..."
+  },
+  "compare": {
+    "modeTitle": "โหมดเปรียบเทียบ",
+    "modeDescription": "ฟังและจัดอันดับไฟล์เสียงสำหรับแต่ละงานใน {{projectName}}",
+    "tasks": "งาน",
+    "totalDataItems": "ข้อมูลทั้งหมด {{count}} รายการ",
+    "taskTitle": "งาน {{number}}",
+    "listenRankDescription": "ฟังไฟล์เสียงทั้งหมดและจัดอันดับ",
+    "rankYourPreferences": "จัดอันดับความชอบของคุณ",
+    "selectAudioPlaceholder": "เลือกเสียง",
+    "currentTask": "งานปัจจุบัน",
+    "currentRankings": "การจัดอันดับปัจจุบัน",
+    "overallProgress": "ความคืบหน้าโดยรวม",
+    "reviewItemsTitle": "ตรวจสอบ 10 รายการเปรียบเทียบ",
+    "reviewItemsDescription": "จัดอันดับ Audio A, B และ C สำหรับแต่ละงานใน {{projectName}}",
+    "table": {
+      "id": "รหัส",
+      "audio": "เสียง",
+      "transcript": "คำถอดเสียง",
+      "tags": "แท็ก",
+      "rankings": "การจัดอันดับ",
+      "status": "สถานะ"
+    },
+    "noCompareItems": "ยังไม่มีรายการเปรียบเทียบ",
+    "noCompareData": "โครงการนี้ยังไม่มีข้อมูลสำหรับเปรียบเทียบ",
+    "pageInfo": "หน้า {{page}} จาก {{total}}",
+    "completed": "เสร็จสิ้น",
+    "playAudioLabel": "เล่น {{title}}",
+    "submitTask": "ส่งงาน {{number}}",
+    "pleaseRankAll": "กรุณาจัดอันดับ Audio A, B และ C ก่อนส่ง",
+    "taskSubmitted": "ส่งงาน {{number}} แล้ว"
+  },
+  "common": {
+    "cancel": "ยกเลิก"
+  }
+}
