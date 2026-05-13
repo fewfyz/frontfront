@@ -3,6 +3,7 @@
 // ใช้ layout 3 คอลัมน์: sidebar tasks | transcription + tags | region details
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -54,6 +55,7 @@ const ModeASingle: React.FC<ModeAProps> = ({
   onSubmit,
   onGoTo,
 }) => {
+  const { t } = useTranslation("common");
   const currentProject = projects.find((p) => p.id === projectId);
   const projectTasks = tasksByProject[projectId] ?? tasks;
   const current = projectTasks.find((t) => t.id === taskId);
@@ -66,7 +68,14 @@ const ModeASingle: React.FC<ModeAProps> = ({
   const TAG_OPTIONS =
     currentProject?.tags && currentProject.tags.length > 0
       ? currentProject.tags
-      : ["Multiple speakers", "Inaudible", "Background noise"];
+      : useMemo(
+          () => [
+            t("tags.multipleSpeakers"),
+            t("tags.inaudible"),
+            t("tags.backgroundNoise"),
+          ],
+          [t]
+        );
 
   const [transcript, setTranscript] = useState(
     current?.transcript ?? current?.text ?? ""
@@ -133,10 +142,10 @@ const ModeASingle: React.FC<ModeAProps> = ({
           onClick={onBack}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to project
+          <ArrowLeft className="h-4 w-4" /> {t("annotation.backToProject")}
         </button>
         <p className="text-sm text-muted-foreground">
-          Projects / Labeling ·{" "}
+          {t("annotation.projectsLabeling")} ·{" "}
           <span className="font-mono text-foreground">#{taskId}</span>
         </p>
       </div>
@@ -145,7 +154,7 @@ const ModeASingle: React.FC<ModeAProps> = ({
         {/* ── Sidebar: task list ── */}
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Tasks
+            {t("annotation.tasks")}
           </h4>
           <div className="mt-4 space-y-2">
             {sidebar.map((t) => (
@@ -209,9 +218,9 @@ const ModeASingle: React.FC<ModeAProps> = ({
           </div>
 
           {/* Transcription */}
-          <h3 className="mt-6 font-display text-lg font-bold">Transcription</h3>
+          <h3 className="mt-6 font-display text-lg font-bold">{t("annotation.transcription")}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Please correct the transcript if needed.
+            {t("annotation.transcriptionHint")}
           </p>
           <textarea
             value={transcript}
@@ -231,9 +240,9 @@ const ModeASingle: React.FC<ModeAProps> = ({
 
           {/* Tags */}
           <div className="mt-6">
-            <h4 className="text-sm font-semibold">Tag any that apply</h4>
+            <h4 className="text-sm font-semibold">{t("annotation.tagAnyThatApply")}</h4>
             <p className="mt-1 text-xs text-muted-foreground">
-              Select one or more tags for this task.
+              {t("annotation.selectTagsForTask")}
             </p>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {TAG_OPTIONS.map((tag) => {
@@ -277,14 +286,14 @@ const ModeASingle: React.FC<ModeAProps> = ({
                 if (prev) onGoTo(prev.id);
               }}
             >
-              <ArrowLeft className="mr-1 h-4 w-4" /> Previous
+              <ArrowLeft className="mr-1 h-4 w-4" /> {t("buttons.previous")}
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={busy}
               className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
             >
-              {busy ? "Saving…" : "Submit"}{" "}
+              {busy ? t("buttons.saving") : t("buttons.submit")}{" "}
               <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
@@ -293,7 +302,7 @@ const ModeASingle: React.FC<ModeAProps> = ({
         {/* ── Right panel: task status ── */}
         <Card className="border-border/60 p-5 shadow-soft">
           <h4 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Status
+            {t("annotation.status")}
           </h4>
 
           <div className="mt-5 rounded-xl border border-border/60 bg-muted/30 p-4">
@@ -315,10 +324,17 @@ const ModeASingle: React.FC<ModeAProps> = ({
               </span>
               <div>
                 <p className="text-sm font-semibold">
-                  {current?.completed ? "Done" : isReady ? "Ready" : "Pending"}
+                  {current?.completed
+                    ? t("status.done")
+                    : isReady
+                    ? t("status.ready")
+                    : t("status.pending")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Task {taskPosition} of {projectTasks.length}
+                  {t("annotation.taskProgress", {
+                    current: taskPosition,
+                    total: projectTasks.length,
+                  })}
                 </p>
               </div>
             </div>
@@ -327,20 +343,20 @@ const ModeASingle: React.FC<ModeAProps> = ({
           <div className="mt-5 space-y-0">
             {[
               {
-                label: "Task ID",
+                label: t("annotation.taskId"),
                 value: `#${taskId}`,
               },
               {
-                label: "Project progress",
+                label: t("annotation.projectProgress"),
                 value: `${completedCount}/${projectTasks.length}`,
               },
               {
-                label: "Selected tags",
+                label: t("annotation.selectedTags"),
                 value: selectedTags.length.toString(),
               },
               {
-                label: "Transcript",
-                value: hasTranscript ? "Filled" : "Empty",
+                label: t("annotation.transcription"),
+                value: hasTranscript ? t("annotation.transcriptFilled") : t("annotation.transcriptEmpty"),
               },
             ].map((row) => (
               <div
@@ -358,12 +374,12 @@ const ModeASingle: React.FC<ModeAProps> = ({
               <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               <div>
                 <p className="text-sm font-medium">
-                  {hasTranscript ? "Transcript ready" : "Transcript missing"}
+                  {hasTranscript ? t("annotation.transcriptReady") : t("annotation.transcriptMissing")}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {hasTranscript
                     ? `${transcript.trim().length} characters`
-                    : "Add text before review."}
+                    : t("annotation.addTextBeforeReview")}
                 </p>
               </div>
             </div>
@@ -373,13 +389,13 @@ const ModeASingle: React.FC<ModeAProps> = ({
               <div>
                 <p className="text-sm font-medium">
                   {selectedTags.length > 0
-                    ? `${selectedTags.length} tag selected`
-                    : "No tags selected"}
+                    ? `${selectedTags.length} ${t("annotation.selectedTags")}`
+                    : t("annotation.noTagsSelected")}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {selectedTags.length > 0
                     ? selectedTags.join(", ")
-                    : "Select at least one tag to mark ready."}
+                    : t("annotation.selectAtLeastOneTag")}
                 </p>
               </div>
             </div>
@@ -415,6 +431,7 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
   onBack,
   onSubmit,
 }) => {
+  const { t } = useTranslation("common");
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(0);
   const [batchDrafts, setBatchDrafts] = useState<
@@ -550,11 +567,9 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
       );
       const missingCount = results.filter((done) => !done).length;
       if (missingCount > 0) {
-        toast.warning(
-          "Some items are still missing tags. They were saved but not marked as Done."
-        );
+        toast.warning(t("toast.batchMissingTags"));
       } else {
-        toast.success("All reviewed items saved and marked as Done.");
+        toast.success(t("toast.batchSavedDone"));
       }
     } finally {
       setBusy(false);
@@ -568,27 +583,31 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
           onClick={onBack}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to project
+          <ArrowLeft className="h-4 w-4" /> {t("annotation.backToProject")}
         </button>
         <p className="text-sm text-muted-foreground">
-          Page {safeCurrentPage + 1} of {totalPages} · {completedCount} completed
+          {t("compare.pageInfo", {
+            page: safeCurrentPage + 1,
+            total: totalPages,
+          })} · {completedCount} {t("compare.completed")}
         </p>
       </div>
 
       {totalItems === 0 ? (
         <Card className="border-border/60 p-12 shadow-soft text-center">
-          <h3 className="font-display text-lg font-bold">No items yet</h3>
+          <h3 className="font-display text-lg font-bold">{t("annotation.noItemsYet")}</h3>
           <p className="mt-2 text-sm text-muted-foreground">
-            This project has no review items to display.
+            {t("annotation.noReviewItems")}
           </p>
         </Card>
       ) : (
         <>
           <div className="mb-4">
-            <h3 className="font-display text-lg font-bold">Review 10 items</h3>
+            <h3 className="font-display text-lg font-bold">
+              {t("annotation.review10ItemsTitle")}
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Check up to 10 items on this page, then submit them together when
-              you're ready.
+              {t("annotation.review10ItemsDescription")}
             </p>
           </div>
 
@@ -596,11 +615,11 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
           <div className="overflow-hidden rounded-2xl border border-border/60 bg-white">
             {/* Header */}
             <div className="grid grid-cols-[80px_100px_minmax(200px,1fr)_minmax(300px,1.3fr)_80px] gap-3 border-b border-border/60 bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground">
-              <div>ID</div>
-              <div>Audio</div>
-              <div>Transcript</div>
-              <div>Tags</div>
-              <div>Status</div>
+              <div>{t("compare.table.id")}</div>
+              <div>{t("compare.table.audio")}</div>
+              <div>{t("compare.table.transcript")}</div>
+              <div>{t("compare.table.tags")}</div>
+              <div>{t("compare.table.status")}</div>
             </div>
 
             {/* Rows */}
@@ -618,7 +637,7 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
                   <div>
                     <div className="font-mono text-xs">#{task.id}</div>
                     <div className="text-xs text-muted-foreground">
-                      Item {itemNumber}
+                      {t("annotation.item", { number: itemNumber })}
                     </div>
                   </div>
 
@@ -641,7 +660,7 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
                         )
                       }
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label="Play audio"
+                      aria-label={t("annotation.playAudioLabel")}
                     >
                       <ArrowRight className="h-4 w-4" />
                     </button>
@@ -666,7 +685,7 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
                       onChange={(e) =>
                         updateItemTranscript(task.id, e.target.value)
                       }
-                      placeholder="Edit transcript..."
+                      placeholder={t("annotation.editTranscriptPlaceholder")}
                       className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                     />
                   </div>
@@ -715,7 +734,7 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
                           : "bg-amber-50 text-amber-700"
                       }`}
                     >
-                      {isDone ? "Done" : "Pending"}
+                      {isDone ? t("status.done") : t("status.pending")}
                     </span>
                   </div>
                 </div>
@@ -739,7 +758,7 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
                 }
               }}
             >
-              <ArrowLeft className="mr-1 h-4 w-4" /> Previous page
+              <ArrowLeft className="mr-1 h-4 w-4" /> {t("buttons.previousPage")}
             </Button>
 
             {safeCurrentPage + 1 < totalPages ? (
@@ -757,15 +776,15 @@ const ModeABatch: React.FC<ModeABatchProps> = ({
                   }
                 }}
               >
-                Next page <ArrowRight className="ml-1 h-4 w-4" />
+                {t("buttons.nextPage")} <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
-            ) : (
+              ) : (
               <Button
                 className="ml-auto rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
                 onClick={handleBatchSubmit}
                 disabled={busy || pageItems.length === 0}
               >
-                {busy ? "Saving…" : "Submit"}{" "}
+                {busy ? t("buttons.saving") : t("buttons.submit")}{" "}
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             )}

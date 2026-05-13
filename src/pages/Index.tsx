@@ -3,6 +3,8 @@
 // dispatch ไปยัง mode-a / mode-b ตาม project.mode
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import clsx from "clsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,6 +78,7 @@ const AnnotatedBy = ({
   tasks: Task[];
   onBack: () => void;
 }) => {
+  const { t } = useTranslation("common");
   const done = tasks.filter((t) => t.completed);
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
@@ -83,23 +86,24 @@ const AnnotatedBy = ({
         onClick={onBack}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to dashboard
+        <ArrowLeft className="h-4 w-4" /> {t("annotatedBy.back")}
       </button>
       <div className="mt-3">
-        <h1 className="font-display text-3xl font-extrabold">Annotated By</h1>
+        <h1 className="font-display text-3xl font-extrabold">
+          {t("annotatedBy.title")}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          All tasks completed. {done.length} task
-          {done.length === 1 ? "" : "s"} annotated.
+          {t("annotatedBy.completedCount", { count: done.length })}
         </p>
       </div>
       <Card className="mt-8 overflow-hidden border-border/60 p-0 shadow-soft">
         <table className="w-full text-sm">
           <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="px-6 py-3 text-left">ID</th>
-              <th className="px-6 py-3 text-left">Annotated by</th>
-              <th className="px-6 py-3 text-left">Text</th>
-              <th className="px-6 py-3 text-left">Status</th>
+              <th className="px-6 py-3 text-left">{t("table.id")}</th>
+              <th className="px-6 py-3 text-left">{t("table.annotatedBy")}</th>
+              <th className="px-6 py-3 text-left">{t("table.text")}</th>
+              <th className="px-6 py-3 text-left">{t("table.status")}</th>
             </tr>
           </thead>
           <tbody>
@@ -115,7 +119,7 @@ const AnnotatedBy = ({
                     variant="outline"
                     className="border-accent/30 bg-accent-soft text-accent"
                   >
-                    Done
+                    {t("status.done")}
                   </Badge>
                 </td>
               </tr>
@@ -145,6 +149,7 @@ const ProjectView = ({
   onRequestDelete: (p: Project) => void;
   onRequestEdit: (p: Project) => void;
 }) => {
+  const { t } = useTranslation("common");
   const firstReviewTask = tasks.find((t) => !t.completed) ?? tasks[0];
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
@@ -152,14 +157,17 @@ const ProjectView = ({
         onClick={onBack}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-accent"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to projects
+        <ArrowLeft className="h-4 w-4" /> {t("projectView.back")}
       </button>
 
       <div className="mt-3 flex items-end justify-between">
         <div>
           <h1 className="font-display text-3xl font-extrabold">{project.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {project.completed} of {project.tasks} tasks completed
+            {t("projectView.taskSummary", {
+              completed: project.completed,
+              total: project.tasks,
+            })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -171,14 +179,14 @@ const ProjectView = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               <DropdownMenuItem onClick={() => onRequestEdit(project)}>
-                Edit
+                {t("projectView.edit")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive"
                 onClick={() => onRequestDelete(project)}
               >
-                Delete
+                {t("projectView.delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -189,10 +197,10 @@ const ProjectView = ({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Review mode
+              {t("projectView.reviewMode")}
             </p>
             <h2 className="text-lg font-semibold">
-              Choose how you want to review this project.
+              {t("projectView.reviewPrompt")}
             </h2>
           </div>
           <div className="inline-flex overflow-hidden rounded-full border border-border/60 bg-muted/10 p-1">
@@ -205,7 +213,7 @@ const ProjectView = ({
               }
               className="rounded-l-full"
             >
-              Review one item
+              {t("projectView.reviewOne")}
             </Button>
             <Button
               variant="outline"
@@ -214,7 +222,7 @@ const ProjectView = ({
               onClick={onBatchReview}
               className="rounded-r-full"
             >
-              Review 10 items
+              {t("projectView.reviewBatch")}
             </Button>
           </div>
         </div>
@@ -225,11 +233,11 @@ const ProjectView = ({
           <table className="w-full text-sm">
             <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-6 py-3 text-left">ID</th>
-                <th className="px-6 py-3 text-left">Status</th>
-                <th className="px-6 py-3 text-left">Annotated by</th>
-                <th className="px-6 py-3 text-left">Text</th>
-                <th className="px-6 py-3 text-right">Action</th>
+                <th className="px-6 py-3 text-left">{t("table.id")}</th>
+                <th className="px-6 py-3 text-left">{t("table.status")}</th>
+                <th className="px-6 py-3 text-left">{t("table.annotatedBy")}</th>
+                <th className="px-6 py-3 text-left">{t("table.text")}</th>
+                <th className="px-6 py-3 text-right">{t("table.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -250,7 +258,7 @@ const ProjectView = ({
                           : "border-border text-muted-foreground"
                       }
                     >
-                      {r.completed ? "Done" : "Pending"}
+                      {r.completed ? t("status.done") : t("status.pending")}
                     </Badge>
                   </td>
                   <td className="px-6 py-4 text-muted-foreground">{r.user}</td>
@@ -258,7 +266,9 @@ const ProjectView = ({
                   <td className="px-6 py-4 text-right">
                     {r.completed ? (
                       <div className="flex items-center justify-end gap-3">
-                        <span className="text-sm text-muted-foreground">Done</span>
+                        <span className="text-sm text-muted-foreground">
+                          {t("status.done")}
+                        </span>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -268,7 +278,7 @@ const ProjectView = ({
                           }}
                           className="text-accent hover:bg-accent-soft hover:text-accent"
                         >
-                          Edit
+                          {t("action.edit")}
                         </Button>
                       </div>
                     ) : (
@@ -281,7 +291,7 @@ const ProjectView = ({
                         }}
                         className="text-accent hover:bg-accent-soft hover:text-accent"
                       >
-                        Label <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                        {t("action.label")} <ArrowRight className="ml-1 h-3.5 w-3.5" />
                       </Button>
                     )}
                   </td>
@@ -335,7 +345,15 @@ const Dashboard = ({
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const DEFAULT_TAGS = ["Multiple speakers", "Inaudible", "Background noise"];
+  const { t } = useTranslation("common");
+  const DEFAULT_TAGS = useMemo(
+    () => [
+      t("tags.multipleSpeakers"),
+      t("tags.inaudible"),
+      t("tags.backgroundNoise"),
+    ],
+    [t]
+  );
   const [tags, setTags] = useState<string[]>([...DEFAULT_TAGS]);
   const [tagInput, setTagInput] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -351,7 +369,7 @@ const Dashboard = ({
         f.name.toLowerCase().endsWith(e)
       )
     ) {
-      toast.error("Unsupported file. Use CSV, XLSX, TXT, or JSON.");
+      toast.error(t("toast.unsupportedFile"));
       return;
     }
     setFile(f);
@@ -361,7 +379,7 @@ const Dashboard = ({
     const v = tagInput.trim();
     if (!v || tagsFull) return;
     if (tags.some((t) => t.toLowerCase() === v.toLowerCase())) {
-      toast.error("Tag already exists");
+      toast.error(t("toast.tagExists"));
       return;
     }
     setTags([...tags, v]);
@@ -391,27 +409,27 @@ const Dashboard = ({
     <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-accent">Dashboard</p>
+          <p className="text-sm font-medium text-accent">{t("dashboard.title")}</p>
           <h1 className="mt-1 font-display text-4xl font-extrabold tracking-tight">
-            Welcome back 👋
+            {t("dashboard.welcome")}
           </h1>
           <p className="mt-2 text-muted-foreground">
-            Here&apos;s what&apos;s happening in your workspace today.
+            {t("dashboard.subtitle")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
-            onClick={() => toast.info("Invite flow coming soon")}
+            onClick={() => toast.info(t("toast.inviteSoon"))}
             className="rounded-full"
           >
-            <UserPlus className="mr-2 h-4 w-4" /> Invite members
+            <UserPlus className="mr-2 h-4 w-4" /> {t("dashboard.inviteMembers")}
           </Button>
           <Button
             onClick={() => setOpen(true)}
             className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
           >
-            <Plus className="mr-2 h-4 w-4" /> New project
+            <Plus className="mr-2 h-4 w-4" /> {t("dashboard.newProject")}
           </Button>
         </div>
       </div>
@@ -427,10 +445,10 @@ const Dashboard = ({
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 shadow-soft sm:max-w-lg">
           <DialogHeader className="shrink-0 space-y-1 px-5 pb-2 pt-5 text-left sm:px-7 sm:pt-6">
             <DialogTitle className="font-display text-xl font-semibold tracking-tight">
-              Create new project
+              {t("createProject.title")}
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              Set up a workspace for your annotation tasks.
+              {t("createProject.description")}
             </DialogDescription>
           </DialogHeader>
 
@@ -438,11 +456,11 @@ const Dashboard = ({
             {/* Name */}
             <div className="space-y-1.5">
               <Label htmlFor="proj-name" className="text-sm font-medium">
-                Project name
+                {t("createProject.name")}
               </Label>
               <Input
                 id="proj-name"
-                placeholder="e.g. Customer Support Audio"
+                placeholder={t("createProject.placeholderName")}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 className="h-10 rounded-lg"
@@ -453,14 +471,14 @@ const Dashboard = ({
             {/* Description */}
             <div className="space-y-1.5">
               <Label htmlFor="proj-desc" className="text-sm font-medium">
-                Description{" "}
+                {t("createProject.descriptionLabel")} {" "}
                 <span className="font-normal text-muted-foreground">
-                  (optional)
+                  ({t("createProject.optional")})
                 </span>
               </Label>
               <Textarea
                 id="proj-desc"
-                placeholder="What's this project about?"
+                placeholder={t("createProject.placeholderDescription")}
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
                 className="min-h-16 rounded-lg sm:min-h-20"
@@ -469,7 +487,7 @@ const Dashboard = ({
 
             {/* Upload */}
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Upload dataset</Label>
+              <Label className="text-sm font-medium">{t("createProject.uploadDataset")}</Label>
               <label
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -513,14 +531,14 @@ const Dashboard = ({
                     <UploadCloud className="h-7 w-7 text-muted-foreground" />
                     <div className="text-sm">
                       <span className="font-medium text-foreground">
-                        Click to upload
+                        {t("createProject.clickToUpload")}
                       </span>{" "}
                       <span className="text-muted-foreground">
-                        or drag and drop
+                        {t("createProject.orDragAndDrop")}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      CSV, XLSX, TXT, or JSON
+                      {t("createProject.uploadFormats")}
                     </p>
                   </>
                 )}
@@ -530,9 +548,9 @@ const Dashboard = ({
             {/* Tags */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Tags</Label>
+                <Label className="text-sm font-medium">{t("createProject.tags")}</Label>
                 <span className="text-xs text-muted-foreground">
-                  {tagsFull ? "Maximum tags reached" : "You can add up to 6 tags"}
+                  {tagsFull ? t("createProject.maxTagsReached") : t("createProject.youCanAddTags")}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -563,7 +581,7 @@ const Dashboard = ({
               </div>
               <div className="flex gap-2 pt-1">
                 <Input
-                  placeholder="Add custom tag"
+                  placeholder={t("createProject.addCustomTag")}
                   value={tagInput}
                   disabled={tagsFull}
                   onChange={(e) => setTagInput(e.target.value)}
@@ -582,14 +600,14 @@ const Dashboard = ({
                   disabled={tagsFull || !tagInput.trim()}
                   className="h-9 shrink-0 rounded-lg"
                 >
-                  Add
+                  {t("createProject.addTag")}
                 </Button>
               </div>
             </div>
 
             {/* Project mode */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Project mode</Label>
+              <Label className="text-sm font-medium">{t("createProject.projectMode")}</Label>
               <div className="grid gap-2 sm:grid-cols-3">
                 {PROJECT_MODES.map((mode) => {
                   const active = newMode === mode.value;
@@ -620,7 +638,7 @@ const Dashboard = ({
               onClick={() => setOpen(false)}
               className="rounded-full"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               disabled={!newName.trim()}
@@ -631,7 +649,7 @@ const Dashboard = ({
               }}
               className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
             >
-              <Plus className="mr-1 h-4 w-4" /> Create project
+              <Plus className="mr-1 h-4 w-4" /> {t("createProject.createProject")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -639,16 +657,16 @@ const Dashboard = ({
 
       {/* Stats */}
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Stat label="Active projects" value={totals.projects} hint="Across your team" />
+        <Stat label={t("stats.activeProjects")} value={totals.projects} hint={t("stats.acrossYourTeam")} />
         <Stat
-          label="Total tasks"
+          label={t("stats.totalTasks")}
           value={totals.tasks.toLocaleString()}
-          hint="Queued for review"
+          hint={t("stats.queuedForReview")}
         />
         <Stat
-          label="Completed"
+          label={t("stats.completed")}
           value={totals.done.toLocaleString()}
-          hint="Annotated this cycle"
+          hint={t("stats.annotatedThisCycle")}
         />
       </div>
 
@@ -656,9 +674,9 @@ const Dashboard = ({
       <div className="mt-10 grid gap-6 lg:grid-cols-3">
         <Card className="border-border/60 p-6 shadow-soft lg:col-span-2">
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-xl font-bold">Recent projects</h3>
+            <h3 className="font-display text-xl font-bold">{t("dashboard.recentProjects")}</h3>
             <span className="text-sm text-muted-foreground">
-              {projects.length} total
+              {projects.length} {t("dashboard.totalProjects")}
             </span>
           </div>
           <div className="mt-5 space-y-3">
@@ -707,7 +725,7 @@ const Dashboard = ({
                       <DropdownMenuTrigger asChild>
                         <button
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-muted/40 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                          aria-label="Project actions"
+                          aria-label={t("dashboard.projectActions")}
                         >
                           <ChevronDown className="h-4 w-4" />
                         </button>
@@ -717,14 +735,14 @@ const Dashboard = ({
                           className="cursor-pointer gap-2"
                           onClick={() => onRequestEdit(p)}
                         >
-                          <Pencil className="h-3.5 w-3.5" /> Edit
+                          <Pencil className="h-3.5 w-3.5" /> {t("dashboard.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="cursor-pointer gap-2 text-destructive focus:text-destructive"
                           onClick={() => onRequestDelete(p)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                          <Trash2 className="h-3.5 w-3.5" /> {t("dashboard.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -736,12 +754,12 @@ const Dashboard = ({
         </Card>
 
         <Card className="border-border/60 p-6 shadow-soft">
-          <h3 className="font-display text-xl font-bold">Resources</h3>
+          <h3 className="font-display text-xl font-bold">{t("resources.title")}</h3>
           <ul className="mt-4 space-y-2 text-sm">
             {[
-              { icon: BookOpen, label: "Documentation" },
-              { icon: FileText, label: "API Reference" },
-              { icon: Users, label: "Team guidelines" },
+              { icon: BookOpen, label: t("resources.documentation") },
+              { icon: FileText, label: t("resources.apiReference") },
+              { icon: Users, label: t("resources.teamGuidelines") },
             ].map((r) => (
               <li key={r.label}>
                 <a className="flex items-center gap-3 rounded-lg p-3 text-foreground transition hover:bg-muted">
@@ -768,7 +786,10 @@ const TopBar = ({
   onLogout: () => void;
   onHome: () => void;
 }) => {
+  const { t, i18n } = useTranslation("common");
   const initials = user.email.slice(0, 2).toUpperCase();
+  const currentLang = i18n.resolvedLanguage ?? i18n.language ?? "th";
+
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
@@ -776,30 +797,51 @@ const TopBar = ({
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-accent shadow-glow">
             <Sparkles className="h-4 w-4 text-accent-foreground" />
           </div>
-          <span className="font-display text-lg font-bold">Annota</span>
+          <span className="font-display text-lg font-bold">{t("topbar.brand")}</span>
         </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-3 rounded-full border border-border bg-card px-2 py-1.5 pr-4 transition hover:shadow-soft">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="bg-gradient-accent text-xs text-accent-foreground">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium">{user.email}</span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onLogout}
-              className="cursor-pointer text-destructive focus:text-destructive"
-            >
-              <LogOut className="mr-2 h-4 w-4" /> Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-full border border-[#eadfd7] bg-white/80 p-1 shadow-sm">
+            {(["th", "en"] as const).map((lng) => (
+              <button
+                key={lng}
+                type="button"
+                onClick={() => i18n.changeLanguage(lng)}
+                className={clsx(
+                  "rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-200",
+                  currentLang === lng
+                    ? "bg-[#2b1b12] text-white shadow-sm"
+                    : "text-[#7a6256] hover:bg-[#f4eee9]"
+                )}
+              >
+                {lng.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-3 rounded-full border border-border bg-card px-2 py-1.5 pr-4 transition hover:shadow-soft">
+                <Avatar className="h-7 w-7">
+                  <AvatarFallback className="bg-gradient-accent text-xs text-accent-foreground">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium">{user.email}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>{t("topbar.myAccount")}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={onLogout}
+                className="cursor-pointer text-destructive focus:text-destructive"
+              >
+                <LogOut className="mr-2 h-4 w-4" /> {t("topbar.logout")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   );
@@ -807,6 +849,7 @@ const TopBar = ({
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
+  const { t } = useTranslation("common");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -815,7 +858,7 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!email.trim() || !pass) {
-      toast.error("Please enter email/username and password");
+      toast.error(t("login.error.enterCredentials"));
       return;
     }
     setBusy(true);
@@ -829,7 +872,7 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
           id: `dev:${credentialEmail}`,
           email: credentialEmail,
         } as unknown as User);
-        toast.success(`Signed in (dev): ${email}`);
+        toast.success(t("login.success.signedInDev", { email }));
       } else if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
           email: credentialEmail,
@@ -837,17 +880,17 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
           options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (error) throw error;
-        toast.success("Account created — you're signed in");
+        toast.success(t("login.success.accountCreated"));
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: credentialEmail,
           password: pass,
         });
         if (error) throw error;
-        toast.success(`Welcome, ${email.split("@")[0]}`);
+        toast.success(t("login.success.welcome", { name: email.split("@")[0] }));
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Authentication failed";
+      const message = err instanceof Error ? err.message : t("login.error.authFailed");
       toast.error(message);
     } finally {
       setBusy(false);
@@ -865,16 +908,15 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
         </div>
         <div className="relative z-10 max-w-md">
           <Badge className="mb-6 border-0 bg-accent-soft text-accent hover:bg-accent-soft">
-            Annotation Platform
+            {t("login.brandTag")}
           </Badge>
           <h1 className="font-display text-5xl font-extrabold leading-tight tracking-tight">
-            Label faster.
+            {t("login.heroTitleLine1")}
             <br />
-            Ship smarter.
+            {t("login.heroTitleLine2")}
           </h1>
           <p className="mt-4 max-w-sm text-base text-muted-foreground">
-            A modern workspace for high-quality data annotation, built for teams
-            who care about clean datasets.
+            {t("login.heroSubtitle")}
           </p>
         </div>
         <div className="absolute -right-32 -bottom-32 h-96 w-96 rounded-full bg-accent/20 blur-3xl" />
@@ -886,20 +928,22 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
       <section className="flex items-center justify-center p-6 sm:p-12">
         <Card className="w-full max-w-md border-border/60 p-8 shadow-soft sm:p-10">
           <h2 className="font-display text-3xl font-bold">
-            {mode === "signin" ? "Welcome back" : "Create your account"}
+            {mode === "signin"
+              ? t("login.welcomeBack")
+              : t("login.createAccount")}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {mode === "signin"
-              ? "Sign in to resume your labeling progress."
-              : "Sign up to start labeling."}
+              ? t("login.signInResume")
+              : t("login.signUpStart")}
           </p>
           <form onSubmit={submit} className="mt-8 space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email">Email or username</Label>
+              <Label htmlFor="email">{t("login.emailOrUsername")}</Label>
               <Input
                 id="email"
                 type="text"
-                placeholder="you@example.com or username"
+                placeholder={t("login.placeholderEmail")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11"
@@ -907,11 +951,11 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pass">Password</Label>
+              <Label htmlFor="pass">{t("login.password")}</Label>
               <Input
                 id="pass"
                 type="password"
-                placeholder="••••••••"
+                placeholder={t("login.placeholderPassword")}
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
                 className="h-11"
@@ -923,23 +967,23 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
               className="h-11 w-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
             >
               {busy
-                ? "Please wait…"
+                ? t("login.pleaseWait")
                 : mode === "signin"
-                ? "Sign in"
-                : "Sign up"}
+                ? t("login.signIn")
+                : t("login.signUp")}
               <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           </form>
           <p className="mt-6 text-center text-sm text-muted-foreground">
             {mode === "signin"
-              ? "Don't have an account?"
-              : "Already have an account?"}{" "}
+              ? t("login.noAccount")
+              : t("login.haveAccount")}{" "}
             <button
               type="button"
               onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
               className="font-medium text-accent hover:underline"
             >
-              {mode === "signin" ? "Sign up" : "Sign in"}
+              {mode === "signin" ? t("login.signUp") : t("login.signIn")}
             </button>
           </p>
         </Card>
@@ -950,6 +994,7 @@ const Login = ({ onLocalLogin }: { onLocalLogin?: (u: User) => void }) => {
 
 // ─── Root Index ───────────────────────────────────────────────────────────────
 const Index = () => {
+  const { t } = useTranslation("common");
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [page, setPage] = useState<Page>({ name: "dashboard" });
@@ -982,7 +1027,7 @@ const Index = () => {
       delete copy[pid];
       return copy;
     });
-    toast.success("Project deleted");
+    toast.success(t("toast.projectDeleted"));
     setConfirmDeleteOpen(false);
     setProjectToDelete(null);
     setPage({ name: "dashboard" });
@@ -1015,10 +1060,10 @@ const Index = () => {
           : p
       )
     );
-    if (editFile) toast.success(`Dataset "${editFile.name}" uploaded`);
+    if (editFile) toast.success(t("toast.datasetUploaded", { fileName: editFile.name }));
     setEditOpen(false);
     setProjectToEdit(null);
-    toast.success("Project updated");
+    toast.success(t("toast.projectUpdated"));
   };
   const handleEditFiles = (files: FileList | null) => {
     if (!files?.length) return;
@@ -1028,7 +1073,7 @@ const Index = () => {
         f.name.toLowerCase().endsWith(e)
       )
     ) {
-      toast.error("Unsupported file");
+      toast.error(t("toast.unsupportedFileSimple"));
       return;
     }
     setEditFile(f);
@@ -1086,7 +1131,7 @@ const Index = () => {
         .eq("user_id", authUser.id);
       if (cancelled) return;
       if (error) {
-        toast.error("Failed to load your progress");
+        toast.error(t("toast.failedLoadProgress"));
         setTasksLoaded(true);
         return;
       }
@@ -1133,7 +1178,7 @@ const Index = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    toast.success("Signed out — your progress is saved");
+    toast.success(t("toast.signedOutSaved"));
     setPage({ name: "dashboard" });
   };
 
@@ -1155,7 +1200,7 @@ const Index = () => {
       (list as Task[]).some((t) => t.id === submittedId)
     );
     if (!projectEntry) {
-      toast.error("Task not found");
+      toast.error(t("toast.taskNotFound"));
       return;
     }
     const projectId = Number(projectEntry[0]);
@@ -1182,9 +1227,9 @@ const Index = () => {
         if (!silent) {
           const next = (updated[projectId] as Task[]).find((t) => !t.completed);
           if (shouldComplete) {
-            toast.success(next ? "Submitted" : "All tasks completed 🎉");
+            toast.success(next ? t("toast.submitted") : t("toast.allTasksCompleted"));
           } else {
-            toast.warning("Saved as pending. Add tags to complete this item.");
+            toast.warning(t("toast.savedPending"));
           }
           if (!preservePage && shouldComplete && next) {
             setPage({
@@ -1218,7 +1263,7 @@ const Index = () => {
       { onConflict: "user_id,task_id" }
     );
     if (error) {
-      toast.error("Could not save progress");
+      toast.error(t("toast.couldNotSaveProgress"));
       return;
     }
     applySavedState();
@@ -1324,9 +1369,9 @@ const Index = () => {
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">
-                Upload dataset{" "}
+                {t("editDialog.uploadDataset")} {" "}
                 <span className="font-normal text-muted-foreground">
-                  (optional)
+                  ({t("createProject.optional")})
                 </span>
               </Label>
               <label
@@ -1372,14 +1417,14 @@ const Index = () => {
                     <UploadCloud className="h-7 w-7 text-muted-foreground" />
                     <p className="text-sm">
                       <span className="font-medium text-foreground">
-                        Click to upload
+                        {t("createProject.clickToUpload")}
                       </span>{" "}
                       <span className="text-muted-foreground">
-                        or drag and drop
+                        {t("createProject.orDragAndDrop")}
                       </span>
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      CSV, XLSX, TXT, or JSON
+                      {t("createProject.uploadFormats")}
                     </p>
                   </>
                 )}
@@ -1387,9 +1432,9 @@ const Index = () => {
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Tags</Label>
+                <Label className="text-sm font-medium">{t("editDialog.tags")}</Label>
                 <span className="text-xs text-muted-foreground">
-                  {editTags.length >= 6 ? "Max reached" : "Up to 6"}
+                  {editTags.length >= 6 ? t("editDialog.maxReached") : t("editDialog.upTo6")}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -1413,7 +1458,7 @@ const Index = () => {
               </div>
               <div className="flex gap-2 pt-1">
                 <Input
-                  placeholder="Add custom tag"
+                  placeholder={t("createProject.addCustomTag")}
                   value={editTagInput}
                   disabled={editTags.length >= 6}
                   onChange={(e) => setEditTagInput(e.target.value)}
@@ -1427,7 +1472,7 @@ const Index = () => {
                           (t) => t.toLowerCase() === v.toLowerCase()
                         )
                       ) {
-                        toast.error("Tag already exists");
+                        toast.error(t("toast.tagExists"));
                         return;
                       }
                       setEditTags((s) => [...s, v]);
@@ -1448,7 +1493,7 @@ const Index = () => {
                   disabled={editTags.length >= 6 || !editTagInput.trim()}
                   className="h-9 rounded-lg"
                 >
-                  Add
+                  {t("createProject.addTag")}
                 </Button>
               </div>
             </div>
@@ -1459,14 +1504,14 @@ const Index = () => {
               onClick={() => setEditOpen(false)}
               className="rounded-full"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               disabled={!editName.trim()}
               onClick={saveEditProject}
               className="rounded-full bg-gradient-accent text-accent-foreground shadow-glow hover:opacity-95"
             >
-              Save changes
+              {t("editDialog.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1495,8 +1540,8 @@ const Index = () => {
             }));
             toast.success(
               file
-                ? `Project created — file ${file.name} uploaded`
-                : "Project created"
+                ? t("toast.projectCreatedWithFile", { fileName: file.name })
+                : t("toast.projectCreated")
             );
           }}
           onRequestDelete={promptDeleteProject}
@@ -1516,7 +1561,7 @@ const Index = () => {
             const firstTask = (tasksByProject[page.id] ?? [])[0] as Task | undefined;
             if (firstTask)
               go({ name: "label", id: firstTask.id, projectId: page.id, mode: "batch" });
-            else toast.info("This project has no review items yet");
+            else toast.info(t("toast.noReviewItems"));
           }}
           onRequestDelete={promptDeleteProject}
           onRequestEdit={promptEditProject}

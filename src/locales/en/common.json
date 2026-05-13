@@ -1,0 +1,241 @@
+{
+  "annotatedBy": {
+    "back": "Back",
+    "title": "Annotated by",
+    "completedCount": "{{count}} completed"
+  },
+  "table": {
+    "id": "ID",
+    "annotatedBy": "Annotated by",
+    "text": "Text",
+    "status": "Status",
+    "action": "Action"
+  },
+  "status": {
+    "done": "Done",
+    "pending": "Pending",
+    "ready": "Ready"
+  },
+  "projectView": {
+    "back": "Back to project list",
+    "edit": "Edit project",
+    "delete": "Delete project",
+    "reviewMode": "Review mode",
+    "reviewPrompt": "Review a single item or a batch to verify labels.",
+    "reviewOne": "Review one item",
+    "reviewBatch": "Review 10 items"
+  },
+  "action": {
+    "edit": "Edit",
+    "label": "View labels"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome back",
+    "subtitle": "Your annotation workspace is ready.",
+    "inviteMembers": "Invite members",
+    "newProject": "New project",
+    "recentProjects": "Recent projects",
+    "totalProjects": "projects",
+    "projectActions": "Project actions",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "createProject": {
+    "title": "Create project",
+    "description": "Build a workspace for your annotation tasks.",
+    "name": "Project name",
+    "placeholderName": "Enter project name",
+    "descriptionLabel": "Description",
+    "optional": "optional",
+    "placeholderDescription": "Describe what this project needs",
+    "uploadDataset": "Upload dataset",
+    "clickToUpload": "Click to upload",
+    "orDragAndDrop": "or drag and drop",
+    "uploadFormats": "CSV, XLSX, TXT, or JSON",
+    "tags": "Tags",
+    "maxTagsReached": "Maximum tags reached",
+    "youCanAddTags": "You can add up to 6 tags",
+    "addCustomTag": "Add custom tag",
+    "addTag": "Add",
+    "projectMode": "Project mode",
+    "createProject": "Create project"
+  },
+  "editDialog": {
+    "uploadDataset": "Upload dataset",
+    "tags": "Tags",
+    "maxReached": "Maximum tags reached",
+    "upTo6": "Up to 6",
+    "saveChanges": "Save changes"
+  },
+  "stats": {
+    "activeProjects": "Active projects",
+    "acrossYourTeam": "across your team",
+    "totalTasks": "Total tasks",
+    "queuedForReview": "Queued for review",
+    "completed": "Completed",
+    "annotatedThisCycle": "Annotated this cycle"
+  },
+  "resources": {
+    "title": "Resources",
+    "documentation": "Documentation",
+    "apiReference": "API reference",
+    "teamGuidelines": "Team guidelines"
+  },
+  "topbar": {
+    "brand": "AnnotateAI",
+    "myAccount": "My account",
+    "logout": "Log out"
+  },
+  "projectView": {
+    "back": "Back to project list",
+    "edit": "Edit project",
+    "delete": "Delete project",
+    "reviewMode": "Review mode",
+    "reviewPrompt": "Review a single item or a batch to verify labels.",
+    "reviewOne": "Review one item",
+    "reviewBatch": "Review 10 items",
+    "taskSummary": "{{completed}} of {{total}} completed"
+  },
+  "login": {
+    "error": {
+      "enterCredentials": "Please enter your email and password.",
+      "authFailed": "Sign in failed. Please try again."
+    },
+    "success": {
+      "accountCreated": "Account created successfully.",
+      "welcome": "Welcome, {{name}}!",
+      "signedInDev": "Signed in as {{email}}"
+    },
+    "brandTag": "Simplify annotation workflows.",
+    "heroTitleLine1": "Bring your data",
+    "heroTitleLine2": "to life with rapid labeling.",
+    "heroSubtitle": "Sign in to continue building your workspace.",
+    "welcomeBack": "Welcome back",
+    "createAccount": "Create an account",
+    "signInResume": "Sign in to continue where you left off.",
+    "signUpStart": "Sign up to get started.",
+    "emailOrUsername": "Email or username",
+    "placeholderEmail": "Enter your email",
+    "password": "Password",
+    "placeholderPassword": "Enter your password",
+    "pleaseWait": "Please wait...",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "noAccount": "Don’t have an account?",
+    "haveAccount": "Already have an account?"
+  },
+  "toast": {
+    "unsupportedFile": "Unsupported file type. Please upload CSV, XLSX, TXT, or JSON.",
+    "batchMissingTags": "Some items are still missing tags. They were saved but not marked as Done.",
+    "batchSavedDone": "All reviewed items saved and marked as Done.",
+    "unsupportedFileSimple": "Unsupported file type.",
+    "tagExists": "Tag already exists.",
+    "projectCreatedWithFile": "Project created — file {{fileName}} uploaded.",
+    "projectCreated": "Project created.",
+    "datasetUploaded": "Dataset uploaded — {{fileName}}",
+    "inviteSoon": "Invite members soon.",
+    "projectDeleted": "Project deleted.",
+    "projectUpdated": "Project updated.",
+    "failedLoadProgress": "Failed to load progress.",
+    "signedOutSaved": "Signed out and progress saved.",
+    "taskNotFound": "Task not found.",
+    "submitted": "Submitted.",
+    "allTasksCompleted": "All tasks completed.",
+    "saved": "Saved.",
+    "savedPending": "Saved pending changes.",
+    "couldNotSaveProgress": "Could not save progress.",
+    "noReviewItems": "No review items available.",
+    "compareItemsMissingRankings": "Some compare items are missing complete rankings.",
+    "compareItemsSavedDone": "All compare items saved and marked as Done."
+  },
+  "errors": {
+    "pageNotFound": "Oops! Page not found",
+    "returnHome": "Return to Home"
+  },
+  "tags": {
+    "multipleSpeakers": "Multiple speakers",
+    "inaudible": "Inaudible",
+    "backgroundNoise": "Background noise"
+  },
+  "buttons": {
+    "previous": "Previous",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "submit": "Submit",
+    "saving": "Saving…",
+    "add": "Add",
+    "backToProject": "Back to project",
+    "playRegion": "Play region",
+    "reviewOne": "Review one item",
+    "reviewBatch": "Review 10 items"
+  },
+  "annotation": {
+    "backToProject": "Back to project",
+    "projectsLabeling": "Projects / Labeling",
+    "tasks": "Tasks",
+    "status": "Status",
+    "transcription": "Transcription",
+    "transcriptionHint": "Please correct the transcript if needed.",
+    "tagAnyThatApply": "Tag any that apply",
+    "selectTagsForTask": "Select one or more tags for this task.",
+    "regionDetails": "Region Details",
+    "start": "Start",
+    "end": "End",
+    "duration": "Duration",
+    "allRegions": "All Regions",
+    "selectRegionProperties": "Select a region on the waveform to view its properties.",
+    "taskId": "Task ID",
+    "projectProgress": "Project progress",
+    "selectedTags": "Selected tags",
+    "transcriptFilled": "Filled",
+    "transcriptEmpty": "Empty",
+    "transcriptReady": "Transcript ready",
+    "transcriptMissing": "Transcript missing",
+    "addTextBeforeReview": "Add text before review.",
+    "noTagsSelected": "No tags selected",
+    "selectAtLeastOneTag": "Select at least one tag to mark ready.",
+    "item": "Item {{number}}",
+    "noItemsYet": "No items yet",
+    "noReviewItems": "This project has no review items to display.",
+    "review10ItemsTitle": "Review 10 items",
+    "review10ItemsDescription": "Check up to 10 items on this page, then submit them together when you're ready.",
+    "taskProgress": "Task {{current}} of {{total}}",
+    "playAudioLabel": "Play audio",
+    "editTranscriptPlaceholder": "Edit transcript..."
+  },
+  "compare": {
+    "modeTitle": "Compare Mode",
+    "modeDescription": "Listen and rank audio files for each task in {{projectName}}.",
+    "tasks": "Tasks",
+    "totalDataItems": "{{count}} total data items",
+    "taskTitle": "Task {{number}}",
+    "listenRankDescription": "Listen to all audio files and rank them.",
+    "rankYourPreferences": "Rank Your Preferences",
+    "selectAudioPlaceholder": "Select audio",
+    "currentTask": "Current Task",
+    "currentRankings": "Current Rankings",
+    "overallProgress": "Overall Progress",
+    "reviewItemsTitle": "Review 10 compare items",
+    "reviewItemsDescription": "Rank Audio A, B, and C for each task in {{projectName}}.",
+    "table": {
+      "id": "ID",
+      "audio": "Audio",
+      "transcript": "Transcript",
+      "tags": "Tags",
+      "rankings": "Rankings",
+      "status": "Status"
+    },
+    "noCompareItems": "No compare items",
+    "noCompareData": "This project has no data to compare yet.",
+    "pageInfo": "Page {{page}} of {{total}}",
+    "completed": "completed",
+    "playAudioLabel": "Play {{title}}",
+    "submitTask": "Submit Task {{number}}",
+    "pleaseRankAll": "Please rank Audio A, B, and C before submitting.",
+    "taskSubmitted": "Task {{number}} submitted"
+  },
+  "common": {
+    "cancel": "Cancel"
+  }
+}

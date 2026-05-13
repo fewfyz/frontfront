@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,6 +8,13 @@ All colors MUST be HSL.
 */
 
 @layer base {
+  html,
+  body,
+  #root,
+  * {
+    font-family: "Noto Sans Thai", sans-serif !important;
+  }
+
   :root {
     --background: 36 40% 98%;
     --foreground: 25 35% 15%;
@@ -105,13 +113,51 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  body,
+  button,
+  input,
+  textarea,
+  select,
+  label,
+  th,
+  td,
+  a,
+  summary,
+  span,
+  div {
+    font-family: 'Noto Sans Thai', sans-serif !important;
+  }
+
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 400;
     font-feature-settings: "cv11", "ss01";
   }
-  h1, h2, h3, h4 {
-    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+
+  h1 {
+    font-weight: 700;
     letter-spacing: -0.02em;
+  }
+
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .font-display,
+  .font-serif,
+  .font-heading {
+    font-family: 'Noto Sans Thai', sans-serif !important;
+  }
+
+  button,
+  label,
+  .btn,
+  input,
+  select,
+  textarea {
+    font-weight: 500;
   }
 }
