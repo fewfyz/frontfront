@@ -310,6 +310,7 @@ const ModeBSingle: React.FC<ModeBPageProps> = ({
   const { t: translate } = useTranslation("common");
   const projectTasks = tasksByProject[projectId] ?? tasks;
   const currentProject = projects.find((p) => p.id === projectId);
+  const current = projectTasks.find((t) => t.id === taskId);
   const currentIndex = projectTasks.findIndex((t) => t.id === taskId);
   const sidebarStart = Math.max(0, currentIndex - 2);
   const sidebar = projectTasks.slice(sidebarStart, sidebarStart + 6);
@@ -790,6 +791,7 @@ const ModeBBatch: React.FC<ModeBPageProps> = ({
   onSubmit,
   onReviewModeChange,
 }) => {
+  const { t } = useTranslation("common");
   const projectTasks = tasksByProject[projectId] ?? tasks;
   const currentProject = projects.find((p) => p.id === projectId);
 

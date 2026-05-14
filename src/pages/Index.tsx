@@ -107,13 +107,13 @@ const AnnotatedBy = ({
             </tr>
           </thead>
           <tbody>
-            {done.map((t) => (
-              <tr key={t.id} className="border-t border-border/60">
+            {done.map((task) => (
+              <tr key={task.id} className="border-t border-border/60">
                 <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
-                  #{t.id}
+                  #{task.id}
                 </td>
-                <td className="px-6 py-4">{t.user}</td>
-                <td className="px-6 py-4">{t.text}</td>
+                <td className="px-6 py-4">{task.user}</td>
+                <td className="px-6 py-4">{task.text}</td>
                 <td className="px-6 py-4">
                   <Badge
                     variant="outline"
@@ -554,22 +554,22 @@ const Dashboard = ({
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {tags.map((t) => {
-                  const isDefault = DEFAULT_TAGS.includes(t);
+                {tags.map((tag) => {
+                  const isDefault = DEFAULT_TAGS.includes(tag);
                   return (
                     <span
-                      key={t}
+                      key={tag}
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         isDefault
                           ? "bg-secondary text-secondary-foreground"
                           : "bg-accent-soft text-accent"
                       }`}
                     >
-                      {t}
+                      {tag}
                       {!isDefault && (
                         <button
                           type="button"
-                          onClick={() => setTags(tags.filter((x) => x !== t))}
+                          onClick={() => setTags(tags.filter((x) => x !== tag))}
                           className="rounded-full p-0.5 hover:bg-background/60"
                         >
                           <X className="h-3 w-3" />
@@ -1438,16 +1438,16 @@ const Index = () => {
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {editTags.map((t) => (
+                {editTags.map((tag) => (
                   <span
-                    key={t}
+                    key={tag}
                     className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground"
                   >
-                    {t}
+                    {tag}
                     <button
                       type="button"
                       onClick={() =>
-                        setEditTags((s) => s.filter((x) => x !== t))
+                        setEditTags((s) => s.filter((x) => x !== tag))
                       }
                       className="rounded-full p-0.5 hover:bg-background/60"
                     >
